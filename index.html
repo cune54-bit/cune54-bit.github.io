@@ -81,6 +81,7 @@
       backdrop-filter: blur(18px);
       border-right: 1px solid var(--line);
       box-shadow: var(--shadow);
+      transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
     .sidebar::after {
@@ -898,9 +899,28 @@
     }
 
     .status-card,
-    .legend-card,
-    .map-header {
+    .legend-card {
       display: none;
+    }
+
+    .map-header {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      z-index: 1150;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      pointer-events: none;
+    }
+
+    .map-header .zoom-hint {
+      pointer-events: auto;
     }
 
     .app-shell {
@@ -921,7 +941,7 @@
       opacity: 1;
       pointer-events: auto;
       border-radius: 24px;
-      transition: max-height 0.24s ease, padding 0.24s ease, border-radius 0.24s ease;
+      transition: transform 0.22s ease, opacity 0.22s ease, max-height 0.24s ease, padding 0.24s ease, border-radius 0.24s ease;
     }
 
     .sidebar::after {
@@ -946,8 +966,16 @@
       margin-bottom: 12px;
     }
 
+    .sidebar-topbar__actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     .sidebar-close,
-    .map-control-button {
+    .section-toggle {
       border: 1px solid rgba(36, 27, 16, 0.12);
       border-radius: 999px;
       background: rgba(255, 252, 246, 0.92);
@@ -960,8 +988,9 @@
       backdrop-filter: blur(10px);
     }
 
-    .sidebar-close {
-      display: none;
+    .sidebar-close,
+    .section-toggle {
+      display: inline-flex;
       flex: 0 0 auto;
       min-width: 72px;
       height: 38px;
@@ -971,8 +1000,24 @@
       text-align: center;
     }
 
+    .sidebar-close {
+      display: none;
+    }
+
     .sidebar.is-open .sidebar-close {
       display: inline-flex;
+    }
+
+    .sidebar.is-compact {
+      overflow: hidden;
+    }
+
+    .sidebar.is-compact > section {
+      display: none !important;
+    }
+
+    .sidebar.is-compact .sidebar-close {
+      display: none !important;
     }
 
     .sidebar .form-card {
@@ -981,6 +1026,28 @@
       padding: 0;
       border: 0;
       background: transparent;
+    }
+
+    .region-compact-summary {
+      display: none;
+      align-items: center;
+      min-height: 38px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .form-card.is-collapsed form {
+      display: none;
+    }
+
+    .form-card.is-collapsed .region-compact-summary {
+      display: flex;
     }
 
     .sidebar .field-grid {
@@ -1015,13 +1082,6 @@
 
     .sidebar.is-open .detail-card {
       display: flex;
-    }
-
-    .map-control-button {
-      min-width: 96px;
-      height: 42px;
-      padding: 0 16px;
-      pointer-events: auto;
     }
 
     .sidebar-backdrop {
@@ -1123,6 +1183,19 @@
     }
 
     @media (max-width: 720px) {
+      .map-header {
+        top: 12px;
+        right: 12px;
+        left: auto;
+        width: calc(100vw - 24px);
+        flex-direction: column;
+        align-items: flex-end;
+      }
+
+      .map-header .zoom-hint {
+        width: min(280px, calc(100vw - 24px));
+      }
+
       .sidebar {
         top: 12px;
         left: 12px;
@@ -1133,6 +1206,14 @@
 
       .sidebar-title {
         font-size: 24px;
+      }
+
+      .sidebar-topbar {
+        align-items: center;
+      }
+
+      .sidebar-topbar__actions {
+        justify-content: flex-end;
       }
 
       .sidebar .field-grid {
@@ -1162,13 +1243,17 @@
         <div>
           <h1 class="sidebar-title">건축인허가 지도</h1>
         </div>
-        <button id="sidebarClose" class="sidebar-close" type="button" aria-label="사이드바 닫기">닫기</button>
+        <div class="sidebar-topbar__actions">
+          <button id="regionCompactToggle" class="section-toggle" type="button" aria-expanded="true">접기</button>
+          <button id="sidebarClose" class="sidebar-close" type="button" aria-label="사이드바 닫기">닫기</button>
+        </div>
       </div>
 
-      <section class="form-card">
+      <section id="regionCard" class="form-card">
         <div class="section-title">
           <h2>지역 선택</h2>
         </div>
+        <div id="regionCompactSummary" class="region-compact-summary"></div>
 
         <form id="loadForm" novalidate>
           <div class="field-grid">
@@ -1259,7 +1344,6 @@
 
     <main class="map-shell">
       <div class="map-header">
-        <button id="sidebarToggle" class="map-control-button" type="button" aria-expanded="false">조회 조건</button>
         <div id="zoomHint" class="zoom-hint" data-tone="idle">인허가 색상 원은 데이터를 불러온 뒤 줌 17 이상에서 표시됩니다.</div>
       </div>
 
@@ -1384,6 +1468,8 @@
       queuedAutoLoad: false,
       loadToken: 0,
       isSidebarOpen: false,
+      isRegionCompact: false,
+      lastViewportWasMobile: null,
       mapRegionSyncTimer: 0,
       mapLoadHideTimer: 0,
       prefetchTimer: 0,
@@ -1398,13 +1484,21 @@
 
     const PERMIT_PAGE_CONCURRENCY = 4;
     const PARCEL_PAGE_CONCURRENCY = 3;
+    const PARCEL_PAGE_RETRY_ATTEMPTS = 3;
+    const PARCEL_EXACT_FETCH_CONCURRENCY = 4;
+    const PARCEL_EXACT_FETCH_RETRY_ATTEMPTS = 1;
+    const PARCEL_EXACT_FALLBACK_LIMIT = 24;
+    const PARCEL_EXACT_FETCH_TIMEOUT_MS = 7000;
     const REGION_LOOKUP_GRID_DEG = 0.0008;
+    const MOBILE_LAYOUT_BREAKPOINT = 720;
 
     const elements = {
       sidebar: document.getElementById("sidebar"),
       sidebarBackdrop: document.getElementById("sidebarBackdrop"),
-      sidebarToggle: document.getElementById("sidebarToggle"),
       sidebarClose: document.getElementById("sidebarClose"),
+      regionCard: document.getElementById("regionCard"),
+      regionCompactToggle: document.getElementById("regionCompactToggle"),
+      regionCompactSummary: document.getElementById("regionCompactSummary"),
       form: document.getElementById("loadForm"),
       sido: document.getElementById("sido"),
       sigungu: document.getElementById("sigungu"),
@@ -1438,6 +1532,8 @@
     document.addEventListener("DOMContentLoaded", () => {
       initRegionSelects();
       bindEvents();
+      syncResponsiveRegionCard({ force: true });
+      updateRegionCompactSummary();
       initMap();
       queueAutoLoadForMapViewport({ trigger: "init", delay: 0 });
     });
@@ -1462,15 +1558,19 @@
           handleLoadRegion(event);
         }
       });
-      elements.sidebarToggle?.addEventListener("click", handleSidebarToggleClick);
+      elements.addressRest?.addEventListener("input", () => {
+        updateRegionCompactSummary();
+      });
       elements.sidebarClose?.addEventListener("click", () => {
         clearSelectedParcelState();
         closeSidebar();
       });
+      elements.regionCompactToggle?.addEventListener("click", handleRegionCompactToggleClick);
       elements.sidebarBackdrop?.addEventListener("click", () => {
         closeSidebar();
       });
       document.addEventListener("keydown", handleDocumentKeydown);
+      window.addEventListener("resize", handleViewportResize, { passive: true });
     }
 
     function initRegionSelects() {
@@ -1671,6 +1771,7 @@
     async function handleSidoChange() {
       populateSigunguOptions(elements.sido.value, "");
       populateLegalDongOptions(elements.sido.value, "", "");
+      updateRegionCompactSummary();
       await moveMapToAdministrativeArea({
         level: "sido",
         sido: elements.sido.value
@@ -1679,6 +1780,7 @@
 
     async function handleSigunguChange() {
       populateLegalDongOptions(elements.sido.value, elements.sigungu.value, "");
+      updateRegionCompactSummary();
       await moveMapToAdministrativeArea({
         level: "sigungu",
         sido: elements.sido.value,
@@ -1688,6 +1790,7 @@
 
     async function handleLegalDongChange() {
       handleRegionSelectionChange();
+      updateRegionCompactSummary();
       if (!elements.legalDong?.value) {
         return;
       }
@@ -1700,6 +1803,7 @@
     }
 
     function handleRegionSelectionChange() {
+      updateRegionCompactSummary();
       updateStatus(
         "시도와 시군구를 바꾸면 지도가 해당 행정구역으로 이동하고, 이후에는 현재 화면에 보이는 필지만 인허가 색상 원으로 표시합니다.",
         "idle",
@@ -2452,13 +2556,26 @@
         }
       }
       reporter?.("연속지적도 필지를 확인하는 중입니다.", 72, "필지");
-      const parcelFeatures = await fetchParcelFeatures(region, {
+      let parcelFeatures = await fetchParcelFeatures(region, {
         onProgress: reporter,
         silent: options.silent === true
       });
       reporter?.("지도 표시용 데이터를 정리하는 중입니다.", 96, "정리", "지도에 표시할 정보 정리 중");
 
-      const normalized = hydratePermitPlacement(parcelFeatures, enrichedPermits);
+      let normalized = hydratePermitPlacement(parcelFeatures, enrichedPermits);
+      const failedParcelPages = Array.isArray(parcelFeatures.__failedPages) ? parcelFeatures.__failedPages : [];
+      if (failedParcelPages.length && normalized.unmatchedPnus.length) {
+        reporter?.("?뚮씫???명뿀媛 ?꾩??꾩?瑜?蹂듦뎄?섎뒗 以묒엯?덈떎.", 94, `${Math.min(normalized.unmatchedPnus.length, PARCEL_EXACT_FALLBACK_LIMIT)}嫄?`, "?붾㈃ ?곸뿭 ?꾩? ?뺤씤 以?");
+        const targetPnus = normalized.unmatchedPnus.slice(0, PARCEL_EXACT_FALLBACK_LIMIT);
+        reporter?.("\uB204\uB77D\uB41C \uC778\uD5C8\uAC00 \uD544\uC9C0\uB97C \uBCF4\uC644\uD558\uB294 \uC911\uC785\uB2C8\uB2E4.", 94, `${targetPnus.length}\uAC74`, "\uD654\uBA74 \uC601\uC5ED \uD544\uC9C0 \uBCF4\uC644 \uC911");
+        const supplementalFeatures = await fetchExactParcelFeaturesByPnuList(targetPnus, {
+          silent: options.silent === true
+        });
+        if (supplementalFeatures.length) {
+          parcelFeatures = dedupeParcelFeatures(parcelFeatures.concat(supplementalFeatures));
+          normalized = hydratePermitPlacement(parcelFeatures, enrichedPermits);
+        }
+      }
       return {
         regionCode: region.regionCode,
         regionLabel: region.regionLabel,
@@ -2829,12 +2946,23 @@
         key: API_KEY_VWORLD,
         domain: VWORLD_DATA_DOMAIN
       });
+      const loadParcelPage = (page) => requestWithRetry(async () => {
+        const payload = await requestParcelPage(page);
+        const status = payload?.response?.status;
+        if (status && status !== "OK") {
+          const errorText = payload?.response?.error?.text || payload?.response?.error?.message || "VWorld ?묐떟 ?ㅻ쪟";
+          throw new UserVisibleError(errorText, { tone: "error" });
+        }
+        return payload;
+      }, {
+        attempts: PARCEL_PAGE_RETRY_ATTEMPTS
+      });
 
       if (!options.silent) {
         updateStatus(`연속지적도 1 페이지를 확인하는 중입니다.`, "loading", `필지 1/?`);
       }
 
-      const firstPayload = await requestParcelPage(1);
+      const firstPayload = await loadParcelPage(1);
       const firstStatus = firstPayload?.response?.status;
       if (firstStatus && firstStatus !== "OK") {
         const errorText = firstPayload?.response?.error?.text || firstPayload?.response?.error?.message || "VWorld 응답 오류";
@@ -2845,6 +2973,7 @@
       const reportedPages = Number(firstPayload?.response?.page?.total || 1);
       const totalPages = Number.isFinite(reportedPages) && reportedPages > 0 ? reportedPages : 1;
       let pagesDone = 1;
+      const failedPages = [];
 
       options.onProgress?.(
         `연속지적도 1/${totalPages} 페이지 수집됨`,
@@ -2861,7 +2990,7 @@
 
         await runWithConcurrencyLimit(remainingPages, PARCEL_PAGE_CONCURRENCY, async (page) => {
           try {
-            const payload = await requestParcelPage(page);
+            const payload = await loadParcelPage(page);
             const status = payload?.response?.status;
             if (status && status !== "OK") {
               if (!options.silent) {
@@ -2872,6 +3001,7 @@
             parcelFeatures.push(...extractParcelFeatures(payload));
           } catch (error) {
             console.error(error);
+            failedPages.push(page);
             if (!options.silent) {
               addWarning(`연속지적도 ${page}페이지 조회에 실패해 해당 페이지는 건너뛰었습니다.`);
             }
@@ -2897,7 +3027,90 @@
         "필지 완료",
         "화면 영역 필지 확인 중"
       );
-      return dedupeParcelFeatures(parcelFeatures);
+      if (failedPages.length) {
+        const retryPages = Array.from(new Set(failedPages)).sort((left, right) => left - right);
+        failedPages.length = 0;
+        options.onProgress?.(
+          "\uB204\uB77D \uD398\uC774\uC9C0 \uC7AC\uD655\uC778 \uC911",
+          94,
+          `${retryPages.length}\uD398\uC774\uC9C0`,
+          "\uD654\uBA74 \uC601\uC5ED \uD544\uC9C0 \uBCF4\uC644 \uC911"
+        );
+
+        for (const page of retryPages) {
+          try {
+            const payload = await loadParcelPage(page);
+            parcelFeatures.push(...extractParcelFeatures(payload));
+          } catch (error) {
+            console.error(error);
+            failedPages.push(page);
+          }
+        }
+      }
+
+      if (failedPages.length && !options.silent) {
+        const uniquePages = Array.from(new Set(failedPages)).sort((left, right) => left - right);
+        addWarning(`?곗냽吏?곷룄 ${uniquePages.join(", ")} ?섏씠吏媛 ?ㅽ뙣?섏뿬, ?꾩?蹂?蹂듦뎄瑜?異붽?濡??쒕룄?⑸땲??`);
+      }
+      const dedupedFeatures = dedupeParcelFeatures(parcelFeatures);
+      Object.defineProperty(dedupedFeatures, "__failedPages", {
+        value: Array.from(new Set(failedPages)).sort((left, right) => left - right),
+        enumerable: false,
+        configurable: true
+      });
+      return dedupedFeatures;
+    }
+
+    async function fetchExactParcelFeaturesByPnuList(pnuList, options = {}) {
+      const uniquePnus = Array.from(new Set(
+        (Array.isArray(pnuList) ? pnuList : [])
+          .map((item) => normalizeWhitespace(item))
+          .filter(Boolean)
+      )).slice(0, PARCEL_EXACT_FALLBACK_LIMIT);
+      if (!uniquePnus.length) {
+        return [];
+      }
+
+      const collectedFeatures = [];
+      await runWithConcurrencyLimit(uniquePnus, PARCEL_EXACT_FETCH_CONCURRENCY, async (pnu) => {
+        try {
+          const payload = await requestWithRetry(async () => {
+            const response = await requestJsonp(VWORLD_DATA_ENDPOINT, {
+              service: "data",
+              request: "GetFeature",
+              version: "2.0",
+              format: "json",
+              size: "5",
+              page: "1",
+              geometry: "true",
+              attribute: "true",
+              crs: "EPSG:4326",
+              data: "LP_PA_CBND_BUBUN",
+              attrfilter: `pnu:like:${pnu}`,
+              key: API_KEY_VWORLD,
+              domain: VWORLD_DATA_DOMAIN
+            }, {
+              timeoutMs: PARCEL_EXACT_FETCH_TIMEOUT_MS
+            });
+            const status = response?.response?.status;
+            if (status && status !== "OK") {
+              const errorText = response?.response?.error?.text || response?.response?.error?.message || "VWorld ?묐떟 ?ㅻ쪟";
+              throw new UserVisibleError(errorText, { tone: "error" });
+            }
+            return response;
+          }, {
+            attempts: PARCEL_EXACT_FETCH_RETRY_ATTEMPTS
+          });
+          collectedFeatures.push(...extractParcelFeatures(payload));
+        } catch (error) {
+          console.error(error);
+          if (!options.silent) {
+            addWarning(`${pnu} ?꾩?蹂댁쓣 媛쒕퀎濡?蹂듦뎄?섏? 紐삵뻽?듬땲??`);
+          }
+        }
+      });
+
+      return dedupeParcelFeatures(collectedFeatures);
     }
 
     function normalizePermitItem(item, source) {
@@ -3082,6 +3295,7 @@
       const parcelFeatureIndex = new Map(parcelFeatures.map((feature) => [normalizeWhitespace(feature.properties?.pnu || ""), feature]));
       const permitsByPnu = new Map();
       let unmatchedPermitCount = 0;
+      const unmatchedPnuSet = new Set();
 
       permits.forEach((permit) => {
         if (!permit.pnu) {
@@ -3090,6 +3304,7 @@
         const feature = parcelFeatureIndex.get(permit.pnu);
         if (!feature) {
           unmatchedPermitCount += 1;
+          unmatchedPnuSet.add(permit.pnu);
           return;
         }
         const list = permitsByPnu.get(permit.pnu) || [];
@@ -3108,7 +3323,8 @@
         parcelFeatureIndex,
         permitsByPnu,
         mappedPermits,
-        unmatchedPermitCount
+        unmatchedPermitCount,
+        unmatchedPnus: Array.from(unmatchedPnuSet)
       };
     }
 
@@ -3914,6 +4130,25 @@
       updatePermitVisibilityHint();
     }
 
+    async function requestWithRetry(task, options = {}) {
+      const attempts = Math.max(1, options.attempts || 1);
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          return await task(attempt);
+        } catch (error) {
+          lastError = error;
+          if (attempt >= attempts) {
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, Math.min(900, 180 * attempt)));
+        }
+      }
+
+      throw lastError || new Error("request retry failed");
+    }
+
     async function requestJson(url, params) {
       const target = `${url}?${params.toString()}`;
       const response = await fetch(target, {
@@ -3946,7 +4181,7 @@
       return JSON.parse(safeText);
     }
 
-    function requestJsonp(url, params) {
+    function requestJsonp(url, params, options = {}) {
       return new Promise((resolve, reject) => {
         const callbackName = `__jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const query = new URLSearchParams({
@@ -3954,10 +4189,11 @@
           callback: callbackName
         });
         const script = document.createElement("script");
+        const timeoutMs = Math.max(1000, Number(options.timeoutMs || 30000));
         const timeout = window.setTimeout(() => {
           cleanup();
           reject(new Error("JSONP 요청 시간이 초과되었습니다."));
-        }, 30000);
+        }, timeoutMs);
 
         function cleanup() {
           window.clearTimeout(timeout);
@@ -4169,12 +4405,60 @@
       elements.zoomHint.textContent = `현재 줌 ${currentZoom} · 색상 원은 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 표시됩니다.`;
     }
 
-    function handleSidebarToggleClick() {
-      if (state.isSidebarOpen) {
-        closeSidebar();
+    function isMobileViewport() {
+      return window.matchMedia(`(max-width: ${MOBILE_LAYOUT_BREAKPOINT}px)`).matches;
+    }
+
+    function handleViewportResize() {
+      syncResponsiveRegionCard();
+    }
+
+    function syncResponsiveRegionCard(options = {}) {
+      const isMobile = isMobileViewport();
+      if (!options.force && state.lastViewportWasMobile === isMobile) {
         return;
       }
-      openSidebar();
+
+      state.lastViewportWasMobile = isMobile;
+      setRegionCompact(isMobile, { focus: false });
+    }
+
+    function handleRegionCompactToggleClick() {
+      setRegionCompact(!state.isRegionCompact);
+    }
+
+    function setRegionCompact(compact, options = {}) {
+      const normalizedCompact = Boolean(compact);
+      state.isRegionCompact = normalizedCompact;
+      elements.sidebar?.classList.toggle("is-compact", normalizedCompact);
+
+      if (elements.regionCompactToggle) {
+        elements.regionCompactToggle.textContent = normalizedCompact ? "\uD3BC\uCE58\uAE30" : "\uC811\uAE30";
+        elements.regionCompactToggle.setAttribute("aria-expanded", normalizedCompact ? "false" : "true");
+      }
+
+      updateRegionCompactSummary();
+
+      if (!normalizedCompact && options.focus !== false) {
+        elements.sido?.focus({ preventScroll: true });
+      }
+    }
+
+    function updateRegionCompactSummary() {
+      if (!elements.regionCompactSummary) {
+        return;
+      }
+
+      const selectedParts = [
+        normalizeWhitespace(elements.sido?.value || ""),
+        normalizeWhitespace(elements.sigungu?.value || ""),
+        normalizeWhitespace(elements.legalDong?.value || "")
+      ].filter(Boolean);
+      const rest = normalizeWhitespace(elements.addressRest?.value || "");
+      const summary = selectedParts.length
+        ? `${selectedParts.join(" / ")}${rest ? ` \u00B7 ${rest}` : ""}`
+        : "\uC9C0\uC5ED\uC744 \uC120\uD0DD\uD558\uBA74 \uC5EC\uAE30\uC5D0\uC11C \uCD95\uC57D \uC815\uBCF4\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4.";
+      elements.regionCompactSummary.textContent = summary;
     }
 
     function handleDocumentKeydown(event) {
@@ -4189,6 +4473,7 @@
       }
 
       const { focus = true } = options;
+      setRegionCompact(false, { focus: false });
       if (!state.isSidebarOpen) {
         state.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       }
@@ -4198,7 +4483,6 @@
       elements.sidebar.setAttribute("aria-hidden", "false");
       elements.sidebarBackdrop.hidden = false;
       document.body.classList.add("sidebar-open");
-      elements.sidebarToggle?.setAttribute("aria-expanded", "true");
 
       if (focus) {
         elements.sidebarClose?.focus({ preventScroll: true });
@@ -4216,7 +4500,6 @@
       elements.sidebar.setAttribute("aria-hidden", "false");
       elements.sidebarBackdrop.hidden = true;
       document.body.classList.remove("sidebar-open");
-      elements.sidebarToggle?.setAttribute("aria-expanded", "false");
 
       if (restoreFocus && state.lastFocusedElement?.focus) {
         state.lastFocusedElement.focus({ preventScroll: true });
