@@ -235,9 +235,26 @@
 
     .actions {
       display: flex;
-      align-items: center;
-      justify-content: center;
+      align-items: stretch;
       gap: 10px;
+    }
+
+    .actions .button {
+      min-width: 0;
+    }
+
+    .actions .button--primary {
+      flex: 3 1 0;
+    }
+
+    .actions .button--refresh {
+      flex: 1 1 0;
+      background: linear-gradient(135deg, #6e6357, #4a4138);
+      box-shadow: 0 12px 32px rgba(74, 65, 56, 0.22);
+    }
+
+    .actions .button--refresh:hover:not(:disabled) {
+      box-shadow: 0 16px 36px rgba(74, 65, 56, 0.28);
     }
 
     .button {
@@ -1272,9 +1289,12 @@
           </div>
 
           <div class="actions">
-            <button id="submitButton" class="button" type="submit">
+            <button id="submitButton" class="button button--primary" type="submit">
               <span class="spinner" aria-hidden="true"></span>
               <span class="button-label">주소 검색</span>
+            </button>
+            <button id="refreshButton" class="button button--refresh" type="button">
+              다시조회
             </button>
           </div>
         </form>
@@ -1447,6 +1467,7 @@
       lastFocusedElement: null,
       loadedRegionKey: "",
       queuedAutoLoad: false,
+      lastZoom: 0,
       isSidebarOpen: false,
       isRegionCompact: false,
       lastViewportWasMobile: null,
@@ -1485,6 +1506,7 @@
       addressRest: document.getElementById("addressRest"),
       loadScope: document.getElementById("loadScope"),
       submitButton: document.getElementById("submitButton"),
+      refreshButton: document.getElementById("refreshButton"),
       buttonLabel: document.querySelector(".button-label"),
       statusCard: document.getElementById("statusCard"),
       statusText: document.getElementById("statusText"),
@@ -1519,6 +1541,7 @@
 
     function bindEvents() {
       elements.form.addEventListener("submit", handleLoadRegion);
+      elements.refreshButton?.addEventListener("click", handleRefreshClick);
       elements.sido?.addEventListener("change", () => {
         handleSidoChange();
       });
@@ -1613,6 +1636,17 @@
           await searchAndMoveToAddress(addressRest);
           return;
         }
+        await syncRegionToMapViewport({ trigger: "manual" });
+      } catch (error) {
+        console.error(error);
+        handleLoadError(error);
+      }
+    }
+
+    async function handleRefreshClick() {
+      state.regionCache.clear();
+      state.regionLookupCache.clear();
+      try {
         await syncRegionToMapViewport({ trigger: "manual" });
       } catch (error) {
         console.error(error);
@@ -4309,6 +4343,12 @@
     }
 
     function handleMapZoomChange() {
+      const currentZoom = state.map?.getZoom() ?? 0;
+      if (state.lastZoom < PERMIT_VISIBLE_MIN_ZOOM && currentZoom >= PERMIT_VISIBLE_MIN_ZOOM) {
+        state.regionLookupCache.clear();
+      }
+      state.lastZoom = currentZoom;
+
       updatePermitVisibility();
       queueAutoLoadForMapViewport({
         trigger: "zoom",
