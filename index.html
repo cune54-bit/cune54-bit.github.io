@@ -1,0 +1,4443 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>건축인허가 지도</title>
+  <meta
+    name="description"
+    content="법정동 단위로 필지와 건축·주택 인허가 정보를 불러오고, 필지 클릭 시 상세 인허가 목록을 확인하는 정적 지도 웹페이지"
+  >
+  <link rel="icon" href="data:,">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap");
+
+    :root {
+      --bg: #f2ede3;
+      --bg-strong: #e5dccb;
+      --panel: rgba(255, 252, 246, 0.95);
+      --panel-alt: rgba(248, 243, 235, 0.92);
+      --ink: #241b10;
+      --muted: #6e6357;
+      --line: rgba(36, 27, 16, 0.12);
+      --line-strong: rgba(36, 27, 16, 0.24);
+      --accent: #c05d35;
+      --accent-strong: #913f1f;
+      --accent-soft: rgba(192, 93, 53, 0.12);
+      --success: #2f7d54;
+      --success-soft: rgba(47, 125, 84, 0.12);
+      --warning: #a06a11;
+      --warning-soft: rgba(160, 106, 17, 0.14);
+      --danger: #b23a2a;
+      --danger-soft: rgba(178, 58, 42, 0.12);
+      --shadow: 0 22px 64px rgba(56, 42, 20, 0.12);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: "Noto Sans KR", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(255, 209, 153, 0.45), transparent 34%),
+        radial-gradient(circle at bottom left, rgba(172, 121, 74, 0.18), transparent 30%),
+        linear-gradient(145deg, #f7f0e2 0%, #efe6d6 46%, #e6ddcc 100%);
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 390px minmax(0, 1fr);
+      align-items: start;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 100vh;
+      padding: 20px 18px 18px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      border-right: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar::after {
+      content: "";
+      position: absolute;
+      inset: 18px 14px 18px auto;
+      width: 1px;
+      background: linear-gradient(180deg, transparent, rgba(36, 27, 16, 0.18), transparent);
+      pointer-events: none;
+    }
+
+    .sidebar-title {
+      margin: 0;
+      font-family: "Space Grotesk", "Noto Sans KR", sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.04;
+      letter-spacing: -0.04em;
+    }
+
+    .sidebar-intro {
+      margin: -4px 0 2px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .form-card,
+    .status-card,
+    .legend-card,
+    .detail-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px;
+      border-radius: var(--radius-lg);
+      background: var(--panel-alt);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+    }
+
+    .detail-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .section-caption,
+    .status-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field--third {
+      grid-column: span 2;
+    }
+
+    .field--full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    .field label span {
+      color: var(--accent-strong);
+    }
+
+    .field select {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid rgba(36, 27, 16, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(36, 27, 16, 0.7) 50%),
+        linear-gradient(135deg, rgba(36, 27, 16, 0.7) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 32px;
+    }
+
+    .field select:focus {
+      outline: none;
+      border-color: rgba(192, 93, 53, 0.54);
+      box-shadow: 0 0 0 4px rgba(192, 93, 53, 0.14);
+      background: #fff;
+    }
+
+    .field input[type="text"] {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid rgba(36, 27, 16, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+    }
+
+    .field input[type="text"]:focus {
+      outline: none;
+      border-color: rgba(192, 93, 53, 0.54);
+      box-shadow: 0 0 0 4px rgba(192, 93, 53, 0.14);
+      background: #fff;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-width: 220px;
+      height: 42px;
+      padding: 0 18px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 32px rgba(145, 63, 31, 0.24);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+    }
+
+    .button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 36px rgba(145, 63, 31, 0.28);
+    }
+
+    .button:disabled {
+      cursor: wait;
+      opacity: 0.78;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: #fff;
+      animation: spin 0.9s linear infinite;
+      display: none;
+    }
+
+    .button.is-loading .spinner {
+      display: inline-flex;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status-card[data-tone="loading"] {
+      background: linear-gradient(180deg, rgba(192, 93, 53, 0.1), rgba(248, 243, 235, 0.94));
+      border-color: rgba(192, 93, 53, 0.18);
+    }
+
+    .status-card[data-tone="success"] {
+      background: linear-gradient(180deg, rgba(47, 125, 84, 0.1), rgba(248, 243, 235, 0.94));
+      border-color: rgba(47, 125, 84, 0.18);
+    }
+
+    .status-card[data-tone="warning"] {
+      background: linear-gradient(180deg, rgba(160, 106, 17, 0.1), rgba(248, 243, 235, 0.94));
+      border-color: rgba(160, 106, 17, 0.18);
+    }
+
+    .status-card[data-tone="error"] {
+      background: linear-gradient(180deg, rgba(178, 58, 42, 0.1), rgba(248, 243, 235, 0.94));
+      border-color: rgba(178, 58, 42, 0.18);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 11px;
+      height: 11px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 6px rgba(110, 99, 87, 0.1);
+      flex: 0 0 auto;
+    }
+
+    .status-card[data-tone="loading"] .status-dot {
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(192, 93, 53, 0.12);
+    }
+
+    .status-card[data-tone="success"] .status-dot {
+      background: var(--success);
+      box-shadow: 0 0 0 6px rgba(47, 125, 84, 0.12);
+    }
+
+    .status-card[data-tone="warning"] .status-dot {
+      background: var(--warning);
+      box-shadow: 0 0 0 6px rgba(160, 106, 17, 0.12);
+    }
+
+    .status-card[data-tone="error"] .status-dot {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(178, 58, 42, 0.12);
+    }
+
+    .status-text,
+    .parcel-summary,
+    .empty-state {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+
+    .warning-list {
+      display: none;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      gap: 8px;
+      flex-direction: column;
+    }
+
+    .warning-list.has-items {
+      display: flex;
+    }
+
+    .warning-item {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(160, 106, 17, 0.1);
+      color: #6d4b0b;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .legend-list,
+    .permit-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .legend-item,
+    .permit-card {
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .legend-item {
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.92);
+      box-shadow: 0 0 0 1px rgba(36, 27, 16, 0.12);
+      background: var(--swatch, var(--accent));
+    }
+
+    .legend-label {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .legend-value {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .parcel-summary {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+    }
+
+    .parcel-summary h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .parcel-summary p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .parcel-summary__pending {
+      margin-top: 4px;
+    }
+
+    .parcel-summary__details {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .parcel-summary__item {
+      display: grid;
+      gap: 3px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+    }
+
+    .parcel-summary__label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .parcel-summary__value {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      color: var(--ink);
+      word-break: keep-all;
+    }
+
+    .permit-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .permit-card__head {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .permit-card__icon {
+      width: 14px;
+      height: 14px;
+      margin-top: 4px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.92);
+      box-shadow: 0 0 0 1px rgba(36, 27, 16, 0.12);
+      background: var(--swatch, var(--accent));
+      flex: 0 0 auto;
+    }
+
+    .permit-card__title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .permit-card__subtitle {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(36, 27, 16, 0.06);
+      color: var(--ink);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .chip strong {
+      font-weight: 800;
+    }
+
+    .empty-state {
+      padding: 18px 12px;
+      border-radius: 14px;
+      border: 1px dashed rgba(36, 27, 16, 0.16);
+      background: rgba(255, 255, 255, 0.62);
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .map-shell {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .map-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 18px 20px;
+      border-radius: var(--radius-xl);
+      background: linear-gradient(180deg, rgba(255, 252, 246, 0.95), rgba(248, 243, 235, 0.88));
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      box-shadow: 0 16px 42px rgba(64, 45, 15, 0.08);
+    }
+
+    .map-heading {
+      display: grid;
+      gap: 12px;
+    }
+
+    .map-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: rgba(36, 27, 16, 0.08);
+      color: var(--ink);
+      font-family: "Space Grotesk", "Noto Sans KR", sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .map-summary h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    .map-summary p {
+      margin: 6px 0 0;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .zoom-hint {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      max-width: 320px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      background: rgba(255, 252, 246, 0.88);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+      text-align: left;
+      box-shadow: 0 12px 28px rgba(56, 42, 20, 0.06);
+    }
+
+    .zoom-hint[data-tone="visible"] {
+      border-color: rgba(47, 125, 84, 0.16);
+      background: rgba(47, 125, 84, 0.1);
+      color: #20553b;
+    }
+
+    .zoom-hint[data-tone="hidden"] {
+      border-color: rgba(160, 106, 17, 0.16);
+      background: rgba(160, 106, 17, 0.1);
+      color: #6d4b0b;
+    }
+
+    .zoom-hint[data-tone="idle"] {
+      color: var(--muted);
+    }
+
+    .stats-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .stat-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 88px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255, 252, 246, 0.9);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      box-shadow: 0 12px 28px rgba(56, 42, 20, 0.06);
+    }
+
+    .stat-card span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .stat-card strong {
+      font-family: "Space Grotesk", "Noto Sans KR", sans-serif;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    #map {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 680px;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      box-shadow: 0 26px 60px rgba(56, 42, 20, 0.12);
+      overflow: hidden;
+      background: rgba(232, 224, 208, 0.55);
+    }
+
+    .map-fallback {
+      display: none;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      background: rgba(178, 58, 42, 0.1);
+      border: 1px solid rgba(178, 58, 42, 0.16);
+      color: #7d2a1c;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .map-fallback.is-visible {
+      display: block;
+    }
+
+    .leaflet-container {
+      background: #dad4c6;
+    }
+
+    .permit-star-icon {
+      background: transparent !important;
+      border: 0 !important;
+    }
+
+    .permit-star-icon svg {
+      display: block;
+      overflow: visible;
+      filter: drop-shadow(0 1px 2px rgba(36, 27, 16, 0.28));
+    }
+
+    .leaflet-control-zoom a {
+      color: var(--ink);
+    }
+
+    .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(8px);
+    }
+
+    .parcel-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1400;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .parcel-modal[hidden] {
+      display: none;
+    }
+
+    .parcel-modal__scrim {
+      position: absolute;
+      inset: 0;
+      background: rgba(36, 27, 16, 0.34);
+      backdrop-filter: blur(6px);
+    }
+
+    .parcel-modal__dialog {
+      position: relative;
+      z-index: 1;
+      width: min(880px, calc(100vw - 40px));
+      max-height: min(88vh, 920px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 20px;
+      border-radius: 28px;
+      background: rgba(255, 252, 246, 0.98);
+      border: 1px solid rgba(36, 27, 16, 0.08);
+      box-shadow: 0 28px 72px rgba(36, 27, 16, 0.24);
+      overflow: hidden;
+    }
+
+    .parcel-modal__header,
+    .parcel-modal__meta {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .parcel-modal__eyebrow {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .parcel-modal__title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.3;
+      letter-spacing: -0.03em;
+    }
+
+    .parcel-modal__close {
+      flex: 0 0 auto;
+      min-width: 72px;
+      height: 38px;
+      padding: 0 16px;
+      border: 1px solid rgba(36, 27, 16, 0.12);
+      border-radius: 999px;
+      background: rgba(36, 27, 16, 0.06);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .parcel-modal__close:hover {
+      background: rgba(36, 27, 16, 0.1);
+    }
+
+    .parcel-modal__body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .parcel-modal__body .permit-list {
+      gap: 12px;
+    }
+
+    @media (max-width: 1180px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        min-height: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .sidebar::after {
+        display: none;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      #map {
+        min-height: 560px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .sidebar,
+      .map-shell {
+        padding: 14px;
+      }
+
+      .sidebar-title {
+        font-size: 24px;
+      }
+
+      .field-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field--third,
+      .field--full {
+        grid-column: span 2;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .map-header {
+        flex-direction: column;
+        padding: 16px;
+      }
+
+      .zoom-hint {
+        max-width: none;
+        width: 100%;
+      }
+
+      .stats-grid {
+        gap: 8px;
+      }
+
+      .stat-card strong {
+        font-size: 24px;
+      }
+
+      #map {
+        min-height: 460px;
+      }
+
+      .parcel-modal {
+        padding: 12px;
+      }
+
+      .parcel-modal__dialog {
+        width: min(100vw - 24px, 880px);
+        max-height: calc(100vh - 24px);
+        padding: 16px;
+      }
+
+      .parcel-modal__header,
+      .parcel-modal__meta {
+        flex-direction: column;
+      }
+
+      .parcel-modal__close {
+        width: 100%;
+      }
+    }
+
+    body.sidebar-open {
+      overflow: hidden;
+    }
+
+    .status-card,
+    .legend-card,
+    .map-header {
+      display: none;
+    }
+
+    .app-shell {
+      position: relative;
+      display: block;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 1200;
+      width: min(420px, calc(100vw - 28px));
+      min-height: 0;
+      max-height: calc(100vh - 36px);
+      padding: 16px 18px 16px;
+      overflow-y: auto;
+      opacity: 1;
+      pointer-events: auto;
+      border-radius: 24px;
+      transition: max-height 0.24s ease, padding 0.24s ease, border-radius 0.24s ease;
+    }
+
+    .sidebar::after {
+      display: none;
+    }
+
+    .sidebar.is-open {
+      inset: 0 auto 0 0;
+      width: min(420px, calc(100vw - 28px));
+      min-height: 100vh;
+      max-height: none;
+      padding: 20px 18px 18px;
+      overflow-y: auto;
+      border-radius: 0;
+    }
+
+    .sidebar-topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .sidebar-close,
+    .map-control-button {
+      border: 1px solid rgba(36, 27, 16, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 252, 246, 0.92);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 14px 30px rgba(36, 27, 16, 0.12);
+      backdrop-filter: blur(10px);
+    }
+
+    .sidebar-close {
+      display: none;
+      flex: 0 0 auto;
+      min-width: 72px;
+      height: 38px;
+      padding: 0 16px;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .sidebar.is-open .sidebar-close {
+      display: inline-flex;
+    }
+
+    .sidebar .form-card {
+      display: flex;
+      gap: 10px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+
+    .sidebar .field-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .sidebar .field--third {
+      grid-column: span 1;
+    }
+
+    .sidebar .field--hidden {
+      display: none;
+    }
+
+    .sidebar .actions {
+      margin-top: 8px;
+    }
+
+    .sidebar .actions .button {
+      min-width: 0;
+      width: 100%;
+      height: 38px;
+      padding: 0 14px;
+    }
+
+    .sidebar .detail-card {
+      display: none;
+      margin-top: 8px;
+    }
+
+    .sidebar.is-open .detail-card {
+      display: flex;
+    }
+
+    .map-control-button {
+      min-width: 96px;
+      height: 42px;
+      padding: 0 16px;
+      pointer-events: auto;
+    }
+
+    .sidebar-backdrop {
+      display: none !important;
+    }
+
+    .sidebar-backdrop[hidden] {
+      display: none;
+    }
+
+    .map-shell {
+      position: relative;
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    .map-summary--hidden,
+    .stats-grid--hidden {
+      display: none;
+    }
+
+    .map-load {
+      position: absolute;
+      left: 50%;
+      bottom: 22px;
+      z-index: 950;
+      width: min(420px, calc(100% - 28px));
+      transform: translateX(-50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .map-load[hidden] {
+      display: none;
+    }
+
+    .map-load.is-visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .map-load__panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(28, 23, 18, 0.84);
+      color: #fffaf2;
+      box-shadow: 0 18px 36px rgba(17, 14, 10, 0.26);
+      backdrop-filter: blur(12px);
+    }
+
+    .map-load__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .map-load__label {
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .map-load__value {
+      flex: 0 0 auto;
+      min-width: 44px;
+      text-align: right;
+      font-family: "Space Grotesk", "Noto Sans KR", sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .map-load__track {
+      overflow: hidden;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .map-load__fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #ffb26d 0%, #f26a3d 50%, #d94726 100%);
+      transition: width 0.2s ease;
+    }
+
+    #map {
+      min-height: 100vh;
+      height: 100vh;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    @media (max-width: 720px) {
+      .sidebar {
+        top: 12px;
+        left: 12px;
+        width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        padding: 14px;
+      }
+
+      .sidebar-title {
+        font-size: 24px;
+      }
+
+      .sidebar .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar .field--third,
+      .sidebar .field--full {
+        grid-column: span 1;
+      }
+
+      .parcel-summary__details {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar.is-open {
+        width: calc(100vw - 24px);
+        padding: 16px 14px 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-hidden="false">
+      <div class="sidebar-topbar">
+        <div>
+          <h1 class="sidebar-title">건축인허가 지도</h1>
+        </div>
+        <button id="sidebarClose" class="sidebar-close" type="button" aria-label="사이드바 닫기">닫기</button>
+      </div>
+
+      <section class="form-card">
+        <div class="section-title">
+          <h2>지역 선택</h2>
+        </div>
+
+        <form id="loadForm" novalidate>
+          <div class="field-grid">
+            <div class="field field--third">
+              <label for="sido">시도 <span>*</span></label>
+              <select id="sido" name="sido" data-default="경기도">
+                <option value="">시도 선택</option>
+              </select>
+            </div>
+            <div class="field field--third">
+              <label for="sigungu">시군구 <span>*</span></label>
+              <select id="sigungu" name="sigungu" data-default="성남시 중원구" disabled>
+                <option value="">시군구 선택</option>
+              </select>
+            </div>
+            <div class="field field--third">
+              <label for="legalDong">읍면동 <span>*</span></label>
+              <select id="legalDong" name="legalDong" data-default="성남동" disabled>
+                <option value="">읍면동 선택</option>
+              </select>
+            </div>
+            <div class="field field--full">
+              <label for="addressRest">나머지 주소</label>
+              <input id="addressRest" name="addressRest" type="text" placeholder="예: 방아리 산26, 123, 12-3, 산 12-3" autocomplete="off" inputmode="text" />
+            </div>
+            <div class="field field--full field--hidden">
+              <label for="loadScope">표시 방식</label>
+              <select id="loadScope" name="loadScope">
+                <option value="all" selected>건축 인허가 + 주택 인허가 모두 표시</option>
+                <option value="arch">건축 인허가만 표시</option>
+                <option value="housing">주택 인허가만 표시</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="submitButton" class="button" type="submit">
+              <span class="spinner" aria-hidden="true"></span>
+              <span class="button-label">주소 검색</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="statusCard" class="status-card" data-tone="idle">
+        <div class="section-title">
+          <h2>진행 상태</h2>
+          <span id="statusMeta" class="status-meta">대기 중</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot" aria-hidden="true"></div>
+          <div id="statusText" class="status-text">
+            페이지를 열면 기본 선택 지역을 자동으로 불러오고, 주소를 바꾼 뒤에는 버튼 없이 지도를 확대해도 연속지적도와 건축·주택 인허가 점이 반영됩니다.
+          </div>
+        </div>
+        <ul id="warningList" class="warning-list" aria-live="polite"></ul>
+      </section>
+
+      <section class="legend-card">
+        <div class="section-title">
+          <h2>인허가 범례</h2>
+          <span id="legendMeta" class="section-caption">로드 전</span>
+        </div>
+        <div id="legendList" class="legend-list">
+          <div class="empty-state">
+            데이터를 불러오면 인허가 종류별 색상과 건수가 여기에 표시됩니다.
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-card">
+        <div class="section-title">
+          <h2>선택 필지</h2>
+          <span id="selectedParcelMeta" class="section-caption">선택 없음</span>
+        </div>
+        <div id="selectedParcelSummary" class="parcel-summary">
+          <h3>필지를 선택하세요</h3>
+          <p>지도 위 필지 외곽선이나 색상 점을 클릭하면 해당 필지의 건축·주택 인허가 목록을 확인할 수 있습니다.</p>
+        </div>
+        <div id="permitList" class="permit-list">
+          <div class="empty-state">
+            필지를 선택하면 인허가 카드가 여기에 표시됩니다.
+          </div>
+        </div>
+      </section>
+    </aside>
+    <div id="sidebarBackdrop" class="sidebar-backdrop" hidden></div>
+
+    <main class="map-shell">
+      <div class="map-header">
+        <button id="sidebarToggle" class="map-control-button" type="button" aria-expanded="false">조회 조건</button>
+        <div id="zoomHint" class="zoom-hint" data-tone="idle">인허가 색상 원은 데이터를 불러온 뒤 줌 17 이상에서 표시됩니다.</div>
+      </div>
+
+      <div id="mapSummary" class="map-summary map-summary--hidden" aria-hidden="true">
+        <h2>지도 준비 중</h2>
+        <p>법정동을 불러오면 필지 경계가 표시되고, 인허가 색상 원은 줌 17 이상에서 나타납니다.</p>
+      </div>
+
+      <div class="stats-grid stats-grid--hidden" aria-hidden="true">
+        <div class="stat-card">
+          <span>불러온 필지</span>
+          <strong id="parcelCount">0</strong>
+        </div>
+        <div class="stat-card">
+          <span>조회 인허가</span>
+          <strong id="permitCount">0</strong>
+        </div>
+        <div class="stat-card">
+          <span>지도 표시 점</span>
+          <strong id="mappedPermitCount">0</strong>
+        </div>
+        <div class="stat-card">
+          <span>선택 필지 인허가</span>
+          <strong id="selectedPermitCount">0</strong>
+        </div>
+      </div>
+
+      <div id="map" aria-label="건축 및 주택 인허가 필지 지도"></div>
+      <div id="mapFallback" class="map-fallback"></div>
+      <div id="mapLoadOverlay" class="map-load" hidden aria-live="polite" aria-atomic="true">
+        <div class="map-load__panel">
+          <div class="map-load__row">
+            <span id="mapLoadLabel" class="map-load__label">인허가 정보 확인 중</span>
+            <span id="mapLoadValue" class="map-load__value">00%</span>
+          </div>
+          <div class="map-load__track" aria-hidden="true">
+            <div id="mapLoadFill" class="map-load__fill"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="./legal-regions.js"></script>
+  <script>
+    const API_KEY_VWORLD = "4E0AD412-BC5D-3976-8220-FD7C550431CE";
+    const PERMIT_PAGE_SIZE = 100;
+    const PARCEL_PAGE_SIZE = 700;
+    const PERMIT_VISIBLE_MIN_ZOOM = 17;
+    const RECENT_PERMIT_LOOKBACK_YEARS = 5;
+    const VIEWPORT_SAMPLE_GRID = 3;
+    const VIEWPORT_PREFETCH_SAMPLE_GRID = 5;
+    const VIEWPORT_PREFETCH_EXPANSION_RATIO = 0.55;
+    const VIEWPORT_PREFETCH_REGION_LIMIT = 6;
+    const VIEWPORT_PREFETCH_DELAY = 900;
+    const MORAN_STATION = [37.4335, 127.1297];
+    const RECENT_PERMIT_REFERENCE_DATE = new Date();
+    const RECENT_PERMIT_REFERENCE_DIGITS = formatDateDigitsFromDate(RECENT_PERMIT_REFERENCE_DATE);
+    const RECENT_PERMIT_CUTOFF_DIGITS = formatDateDigitsFromDate(getYearsAgoDate(RECENT_PERMIT_REFERENCE_DATE, RECENT_PERMIT_LOOKBACK_YEARS));
+    const ARCH_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo";
+    const HOUSING_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/HsPmsHubService/getHpBasisOulnInfo";
+    const VWORLD_DATA_ENDPOINT = "https://api.vworld.kr/req/data";
+    const VWORLD_ADDRESS_ENDPOINT = "https://api.vworld.kr/req/address";
+    const VWORLD_SIDO_LAYER = "LT_C_ADSIDO_INFO";
+    const VWORLD_SIGUNGU_LAYER = "LT_C_ADSIGG_INFO";
+    const API_KEY_PUBLIC = "262UaaKgpdsminV6qlnLGdOq7KpFfEfTPk9jPZwt422PFHtMoAKfWyF3k3DFQWNUpVmdLpZw4ESve6h7hkw4uA==";
+    const VWORLD_DATA_DOMAIN = "http://cune54-bit.github.io/land-map";
+
+    const SIDO_MAP = {
+      "서울": "서울특별시",
+      "부산": "부산광역시",
+      "대구": "대구광역시",
+      "인천": "인천광역시",
+      "광주": "광주광역시",
+      "대전": "대전광역시",
+      "울산": "울산광역시",
+      "세종": "세종특별자치시",
+      "경기": "경기도",
+      "강원": "강원특별자치도",
+      "충북": "충청북도",
+      "충남": "충청남도",
+      "전북": "전북특별자치도",
+      "전남": "전라남도",
+      "경북": "경상북도",
+      "경남": "경상남도",
+      "제주": "제주특별자치도"
+    };
+
+    class UserVisibleError extends Error {
+      constructor(message, options = {}) {
+        super(message);
+        this.name = "UserVisibleError";
+        this.tone = options.tone || "error";
+      }
+    }
+
+    const state = {
+      isLoading: false,
+      map: null,
+      baseLayer: null,
+      pathRenderer: null,
+      parcelLayer: null,
+      parcelFeatures: [],
+      parcelFeatureIndex: new Map(),
+      permitMarkersLayer: null,
+      permitMarkersVisible: false,
+      selectedLayer: null,
+      permits: [],
+      permitsByPnu: new Map(),
+      categoryStats: [],
+      categoryColors: new Map(),
+      selectedPnu: null,
+      selectedFocusPermitId: "",
+      lastFocusedElement: null,
+      loadedRegionKey: "",
+      queuedAutoLoad: false,
+      loadToken: 0,
+      isSidebarOpen: false,
+      mapRegionSyncTimer: 0,
+      mapLoadHideTimer: 0,
+      prefetchTimer: 0,
+      prefetchToken: 0,
+      buildingRegisterCache: new Map(),
+      regionCache: new Map(),
+      regionInflight: new Map(),
+      regionLookupCache: new Map(),
+      boundaryCache: new Map(),
+      starIconCache: new Map()
+    };
+
+    const PERMIT_PAGE_CONCURRENCY = 4;
+    const PARCEL_PAGE_CONCURRENCY = 3;
+    const REGION_LOOKUP_GRID_DEG = 0.0008;
+
+    const elements = {
+      sidebar: document.getElementById("sidebar"),
+      sidebarBackdrop: document.getElementById("sidebarBackdrop"),
+      sidebarToggle: document.getElementById("sidebarToggle"),
+      sidebarClose: document.getElementById("sidebarClose"),
+      form: document.getElementById("loadForm"),
+      sido: document.getElementById("sido"),
+      sigungu: document.getElementById("sigungu"),
+      legalDong: document.getElementById("legalDong"),
+      addressRest: document.getElementById("addressRest"),
+      loadScope: document.getElementById("loadScope"),
+      submitButton: document.getElementById("submitButton"),
+      buttonLabel: document.querySelector(".button-label"),
+      statusCard: document.getElementById("statusCard"),
+      statusText: document.getElementById("statusText"),
+      statusMeta: document.getElementById("statusMeta"),
+      warningList: document.getElementById("warningList"),
+      legendMeta: document.getElementById("legendMeta"),
+      legendList: document.getElementById("legendList"),
+      selectedParcelMeta: document.getElementById("selectedParcelMeta"),
+      selectedParcelSummary: document.getElementById("selectedParcelSummary"),
+      permitList: document.getElementById("permitList"),
+      zoomHint: document.getElementById("zoomHint"),
+      mapSummary: document.getElementById("mapSummary"),
+      mapFallback: document.getElementById("mapFallback"),
+      mapLoadOverlay: document.getElementById("mapLoadOverlay"),
+      mapLoadLabel: document.getElementById("mapLoadLabel"),
+      mapLoadValue: document.getElementById("mapLoadValue"),
+      mapLoadFill: document.getElementById("mapLoadFill"),
+      parcelCount: document.getElementById("parcelCount"),
+      permitCount: document.getElementById("permitCount"),
+      mappedPermitCount: document.getElementById("mappedPermitCount"),
+      selectedPermitCount: document.getElementById("selectedPermitCount")
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initRegionSelects();
+      bindEvents();
+      initMap();
+      queueAutoLoadForMapViewport({ trigger: "init", delay: 0 });
+    });
+
+    function bindEvents() {
+      elements.form.addEventListener("submit", handleLoadRegion);
+      elements.sido?.addEventListener("change", () => {
+        handleSidoChange();
+      });
+      elements.sigungu?.addEventListener("change", () => {
+        handleSigunguChange();
+      });
+      elements.legalDong?.addEventListener("change", () => {
+        handleLegalDongChange();
+      });
+      elements.loadScope?.addEventListener("change", () => {
+        handleRegionSelectionChange();
+      });
+      elements.addressRest?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleLoadRegion(event);
+        }
+      });
+      elements.sidebarToggle?.addEventListener("click", handleSidebarToggleClick);
+      elements.sidebarClose?.addEventListener("click", () => {
+        clearSelectedParcelState();
+        closeSidebar();
+      });
+      elements.sidebarBackdrop?.addEventListener("click", () => {
+        closeSidebar();
+      });
+      document.addEventListener("keydown", handleDocumentKeydown);
+    }
+
+    function initRegionSelects() {
+      if (!elements.sido || !elements.sigungu || !elements.legalDong) {
+        return;
+      }
+
+      const legalSidos = getLegalRegionSidos();
+      if (!legalSidos.length) {
+        setSelectOptions(elements.sido, [], { placeholder: "지역 데이터 로드 실패", disabled: true });
+        setSelectOptions(elements.sigungu, [], { placeholder: "시군구 선택", disabled: true });
+        setSelectOptions(elements.legalDong, [], { placeholder: "읍면동 선택", disabled: true });
+        updateStatus("법정동 선택 데이터를 읽지 못했습니다.", "error", "중단");
+        return;
+      }
+
+      const defaultSido = normalizeSido(elements.sido.dataset.default || "경기도");
+      const defaultSigungu = normalizeWhitespace(elements.sigungu.dataset.default || "성남시 중원구");
+      const defaultLegalDong = normalizeWhitespace(elements.legalDong.dataset.default || "성남동");
+
+      populateSidoOptions(defaultSido);
+      populateSigunguOptions(defaultSido, defaultSigungu);
+      populateLegalDongOptions(defaultSido, defaultSigungu, defaultLegalDong);
+    }
+
+    function initMap() {
+      if (!window.L) {
+        showMapFallback("Leaflet 스크립트를 불러오지 못했습니다. 네트워크 연결 상태와 CDN 차단 여부를 확인하세요.");
+        return;
+      }
+
+      try {
+        state.pathRenderer = L.canvas({ padding: 0.5 });
+        state.map = L.map("map", {
+          zoomControl: true,
+          attributionControl: true,
+          preferCanvas: true
+        });
+        state.map.setView(MORAN_STATION, PERMIT_VISIBLE_MIN_ZOOM);
+
+        state.baseLayer = L.tileLayer(
+          `https://api.vworld.kr/req/wmts/1.0.0/${API_KEY_VWORLD}/Base/{z}/{y}/{x}.png`,
+          {
+            maxZoom: 22,
+            maxNativeZoom: 19,
+            attribution: '© <a href="https://www.vworld.kr" target="_blank" rel="noreferrer">VWorld</a>'
+          }
+        );
+        state.baseLayer.addTo(state.map);
+        state.map.on("zoomend", handleMapZoomChange);
+        state.map.on("moveend", handleMapMoveEnd);
+
+        setMapSummary("건축인허가 지도", `초기 화면은 모란역 중심 줌 ${PERMIT_VISIBLE_MIN_ZOOM}이며, 확대하거나 이동하면 현재 화면에 보이는 필지 기준으로 인허가가 자동 표시됩니다.`);
+        updatePermitVisibilityHint();
+      } catch (error) {
+        console.error(error);
+        showMapFallback("지도를 초기화하지 못했습니다. Leaflet 로딩 상태와 VWorld 배경지도를 확인하세요.");
+      }
+    }
+
+    async function handleLoadRegion(event) {
+      event.preventDefault();
+      try {
+        const addressRest = normalizeWhitespace(elements.addressRest?.value || "");
+        if (addressRest) {
+          await searchAndMoveToAddress(addressRest);
+          return;
+        }
+        await syncRegionToMapViewport({ trigger: "manual" });
+      } catch (error) {
+        console.error(error);
+        handleLoadError(error);
+      }
+    }
+
+    function readFormValues() {
+      const formData = new FormData(elements.form);
+      return {
+        sido: normalizeWhitespace(formData.get("sido")),
+        sigungu: normalizeWhitespace(formData.get("sigungu")),
+        legalDong: normalizeWhitespace(formData.get("legalDong")),
+        loadScope: normalizeWhitespace(formData.get("loadScope")) || "all"
+      };
+    }
+
+    function validateInput(input) {
+      if (!input.sido || !input.sigungu || !input.legalDong) {
+        throw new UserVisibleError("시도, 시군구, 읍면동은 모두 선택해야 합니다.", { tone: "error" });
+      }
+    }
+
+    function getLegalRegionSidos() {
+      return Array.isArray(window.LEGAL_REGION_OPTIONS?.sidos) ? window.LEGAL_REGION_OPTIONS.sidos : [];
+    }
+
+    function getDisplaySigungusForSido(sidoValue) {
+      const normalizedSido = normalizeSido(sidoValue);
+      const sido = getLegalRegionSidos().find((item) => item.name === normalizedSido);
+      if (!Array.isArray(sido?.sigungus)) {
+        return [];
+      }
+
+      const guParentNames = new Set(
+        sido.sigungus
+          .filter((candidate) => {
+            const candidateName = normalizeWhitespace(candidate?.name || "");
+            if (!candidateName) {
+              return false;
+            }
+            return sido.sigungus.some((other) => {
+              const otherName = normalizeWhitespace(other?.name || "");
+              if (!otherName || otherName === candidateName || !otherName.startsWith(`${candidateName} `)) {
+                return false;
+              }
+              const suffix = extractSigunguChildSuffix(candidateName, otherName);
+              return suffix.endsWith("구");
+            });
+          })
+          .map((item) => normalizeWhitespace(item?.name || ""))
+          .filter(Boolean)
+      );
+
+      return sido.sigungus.filter((candidate) => {
+        const candidateName = normalizeWhitespace(candidate?.name || "");
+        if (!candidateName) {
+          return false;
+        }
+        const parentName = findSigunguParentName(sido.sigungus, candidateName);
+        if (parentName) {
+          const suffix = extractSigunguChildSuffix(parentName, candidateName);
+          return guParentNames.has(parentName) && suffix.endsWith("구");
+        }
+        if (guParentNames.has(candidateName)) {
+          return false;
+        }
+        return !sido.sigungus.some((other) => {
+          const otherName = normalizeWhitespace(other?.name || "");
+          return otherName
+            && otherName !== candidateName
+            && candidateName.startsWith(`${otherName} `);
+        });
+      });
+    }
+
+    function findSigunguParentName(sigunguItems, candidateName) {
+      if (!Array.isArray(sigunguItems) || !candidateName) {
+        return "";
+      }
+
+      return sigunguItems.reduce((bestMatch, item) => {
+        const itemName = normalizeWhitespace(item?.name || "");
+        if (!itemName || itemName === candidateName || !candidateName.startsWith(`${itemName} `)) {
+          return bestMatch;
+        }
+        return itemName.length > bestMatch.length ? itemName : bestMatch;
+      }, "");
+    }
+
+    function extractSigunguChildSuffix(parentName, childName) {
+      if (!parentName || !childName || !childName.startsWith(`${parentName} `)) {
+        return "";
+      }
+      return normalizeWhitespace(childName.slice(parentName.length + 1));
+    }
+
+    function populateSidoOptions(selectedValue = "") {
+      const options = getLegalRegionSidos().map((item) => item.name);
+      setSelectOptions(elements.sido, options, {
+        placeholder: "시도 선택",
+        selectedValue: normalizeSido(selectedValue)
+      });
+    }
+
+    function populateSigunguOptions(sidoValue, selectedValue = "") {
+      const options = getDisplaySigungusForSido(sidoValue).map((item) => item.name);
+      setSelectOptions(elements.sigungu, options, {
+        placeholder: "시군구 선택",
+        selectedValue: normalizeWhitespace(selectedValue),
+        disabled: !normalizeSido(sidoValue)
+      });
+    }
+
+    function populateLegalDongOptions(sidoValue, sigunguValue, selectedValue = "") {
+      const normalizedSido = normalizeSido(sidoValue);
+      const normalizedSigungu = normalizeWhitespace(sigunguValue);
+      const sido = getLegalRegionSidos().find((item) => item.name === normalizedSido);
+      const sigungu = Array.isArray(sido?.sigungus)
+        ? sido.sigungus.find((item) => item.name === normalizedSigungu)
+        : null;
+      const options = Array.isArray(sigungu?.legalDongs) ? sigungu.legalDongs.map((item) => item.name) : [];
+      setSelectOptions(elements.legalDong, options, {
+        placeholder: "읍면동 선택",
+        selectedValue: normalizeWhitespace(selectedValue),
+        disabled: !normalizedSido || !normalizedSigungu
+      });
+    }
+
+    async function handleSidoChange() {
+      populateSigunguOptions(elements.sido.value, "");
+      populateLegalDongOptions(elements.sido.value, "", "");
+      await moveMapToAdministrativeArea({
+        level: "sido",
+        sido: elements.sido.value
+      });
+    }
+
+    async function handleSigunguChange() {
+      populateLegalDongOptions(elements.sido.value, elements.sigungu.value, "");
+      await moveMapToAdministrativeArea({
+        level: "sigungu",
+        sido: elements.sido.value,
+        sigungu: elements.sigungu.value
+      });
+    }
+
+    async function handleLegalDongChange() {
+      handleRegionSelectionChange();
+      if (!elements.legalDong?.value) {
+        return;
+      }
+      await moveMapToAdministrativeArea({
+        level: "legalDong",
+        sido: elements.sido.value,
+        sigungu: elements.sigungu.value,
+        legalDong: elements.legalDong.value
+      });
+    }
+
+    function handleRegionSelectionChange() {
+      updateStatus(
+        "시도와 시군구를 바꾸면 지도가 해당 행정구역으로 이동하고, 이후에는 현재 화면에 보이는 필지만 인허가 색상 원으로 표시합니다.",
+        "idle",
+        "대기"
+      );
+      setMapSummary(
+        "건축인허가 지도",
+        `시도와 시군구를 선택해 지도를 이동한 뒤, 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 현재 화면 영역 기준으로 필지와 인허가가 자동 갱신됩니다.`
+      );
+    }
+
+    async function moveMapToAdministrativeArea(options = {}) {
+      if (!state.map) {
+        return;
+      }
+
+      const normalizedSido = normalizeSido(options.sido || "");
+      const normalizedSigungu = normalizeWhitespace(options.sigungu || "");
+      const normalizedLegalDong = normalizeWhitespace(options.legalDong || "");
+      if (!normalizedSido) {
+        return;
+      }
+
+      try {
+        if (options.level === "legalDong" && normalizedSigungu && normalizedLegalDong) {
+          const legalDong = lookupLegalDongInfo(normalizedSido, normalizedSigungu, normalizedLegalDong);
+          if (!legalDong?.regionCode) {
+            return;
+          }
+          const bounds = await fetchLegalDongBoundsFromParcels(legalDong.regionCode);
+          if (bounds) {
+            state.map.fitBounds(bounds, {
+              padding: [24, 24],
+              maxZoom: PERMIT_VISIBLE_MIN_ZOOM
+            });
+          }
+          return;
+        }
+
+        if (options.level === "sigungu" && normalizedSigungu) {
+          const sigungu = lookupSigunguInfo(normalizedSido, normalizedSigungu);
+          if (!sigungu?.sigunguCd) {
+            return;
+          }
+          const bounds = await fetchAdministrativeBoundaryBounds({
+            key: `sigungu:${sigungu.sigunguCd}`,
+            dataLayer: VWORLD_SIGUNGU_LAYER,
+            attrfilter: `sig_cd:like:${sigungu.sigunguCd}`
+          });
+          if (bounds) {
+            state.map.fitBounds(bounds, {
+              padding: [24, 24],
+              maxZoom: PERMIT_VISIBLE_MIN_ZOOM
+            });
+          }
+          return;
+        }
+
+        const sidoCode = lookupSidoCode(normalizedSido);
+        if (!sidoCode) {
+          return;
+        }
+        const bounds = await fetchAdministrativeBoundaryBounds({
+          key: `sido:${sidoCode}`,
+          dataLayer: VWORLD_SIDO_LAYER,
+          attrfilter: `ctprvn_cd:like:${sidoCode}`
+        });
+        if (bounds) {
+          state.map.fitBounds(bounds, {
+            padding: [28, 28],
+            maxZoom: 11
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        addWarning("선택한 행정구역으로 지도를 이동하지 못했습니다. 잠시 후 다시 시도해주세요.");
+      }
+    }
+
+    function lookupSidoCode(sidoValue) {
+      const normalizedSido = normalizeSido(sidoValue);
+      const sigungus = getDisplaySigungusForSido(normalizedSido);
+      const firstRegionCode = digitsOnly(sigungus?.[0]?.legalDongs?.[0]?.regionCode || "");
+      return firstRegionCode.length >= 2 ? firstRegionCode.slice(0, 2) : "";
+    }
+
+    function lookupSigunguInfo(sidoValue, sigunguValue) {
+      const normalizedSido = normalizeSido(sidoValue);
+      const normalizedSigungu = normalizeWhitespace(sigunguValue);
+      const sigungu = getDisplaySigungusForSido(normalizedSido).find((item) => item.name === normalizedSigungu);
+      const firstRegionCode = digitsOnly(sigungu?.legalDongs?.[0]?.regionCode || "");
+      if (firstRegionCode.length < 10) {
+        return null;
+      }
+      return {
+        name: normalizedSigungu,
+        sigunguCd: firstRegionCode.slice(0, 5)
+      };
+    }
+
+    function lookupLegalDongInfo(sidoValue, sigunguValue, legalDongValue) {
+      const normalizedSido = normalizeSido(sidoValue);
+      const normalizedSigungu = normalizeWhitespace(sigunguValue);
+      const normalizedLegalDong = normalizeWhitespace(legalDongValue);
+      const sigungu = getDisplaySigungusForSido(normalizedSido).find((item) => item.name === normalizedSigungu);
+      if (!Array.isArray(sigungu?.legalDongs)) {
+        return null;
+      }
+      const dong = sigungu.legalDongs.find((item) => normalizeWhitespace(item?.name || "") === normalizedLegalDong);
+      const regionCode = digitsOnly(dong?.regionCode || "").slice(0, 10);
+      if (regionCode.length !== 10) {
+        return null;
+      }
+      return {
+        name: normalizedLegalDong,
+        regionCode,
+        sigunguCd: regionCode.slice(0, 5),
+        bjdongCd: regionCode.slice(5, 10)
+      };
+    }
+
+    async function fetchLegalDongBoundsFromParcels(regionCode) {
+      const cacheKey = `legaldong:${regionCode}`;
+      if (state.boundaryCache.has(cacheKey)) {
+        return state.boundaryCache.get(cacheKey);
+      }
+
+      const queryParcels = async (prefix) => {
+        const payload = await requestJsonp(VWORLD_DATA_ENDPOINT, {
+          service: "data",
+          request: "GetFeature",
+          version: "2.0",
+          format: "json",
+          size: "300",
+          page: "1",
+          geometry: "true",
+          attribute: "false",
+          crs: "EPSG:4326",
+          data: "LP_PA_CBND_BUBUN",
+          attrfilter: `pnu:like:${prefix}`,
+          key: API_KEY_VWORLD,
+          domain: VWORLD_DATA_DOMAIN
+        });
+        const status = payload?.response?.status;
+        if (status && status !== "OK") {
+          return [];
+        }
+        return extractParcelFeatures(payload);
+      };
+
+      let features = await queryParcels(regionCode);
+      if (!features.length) {
+        features = await queryParcels(regionCode.slice(0, 8));
+      }
+      if (!features.length) {
+        return null;
+      }
+      const bounds = L.geoJSON({
+        type: "FeatureCollection",
+        features
+      }).getBounds();
+      if (!bounds || !bounds.isValid()) {
+        return null;
+      }
+      state.boundaryCache.set(cacheKey, bounds);
+      return bounds;
+    }
+
+    async function searchAndMoveToAddress(addressRest) {
+      if (!state.map) {
+        return;
+      }
+      const sido = normalizeSido(elements.sido?.value || "");
+      const sigungu = normalizeWhitespace(elements.sigungu?.value || "");
+      const legalDong = normalizeWhitespace(elements.legalDong?.value || "");
+      if (!sido || !sigungu || !legalDong) {
+        addWarning("주소를 검색하려면 시도 · 시군구 · 읍면동을 먼저 선택해주세요.");
+        return;
+      }
+      const cleanedRest = normalizeWhitespace(addressRest);
+      const address = `${sido} ${sigungu} ${legalDong} ${cleanedRest}`;
+
+      setMapLoadingProgress("주소 위치를 확인하는 중", 10);
+      try {
+        const payload = await requestJsonp(VWORLD_ADDRESS_ENDPOINT, {
+          service: "address",
+          request: "getcoord",
+          version: "2.0",
+          crs: "epsg:4326",
+          address,
+          format: "json",
+          type: "parcel",
+          key: API_KEY_VWORLD
+        });
+
+        const status = payload?.response?.status;
+        if (status && status !== "OK") {
+          addWarning(`주소 위치를 찾지 못했습니다: ${address}`);
+          hideMapLoadingProgress();
+          return;
+        }
+        const point = payload?.response?.result?.point;
+        const lng = Number(point?.x);
+        const lat = Number(point?.y);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+          addWarning(`주소 좌표를 해석하지 못했습니다: ${address}`);
+          hideMapLoadingProgress();
+          return;
+        }
+        state.map.setView([lat, lng], 19);
+        hideMapLoadingProgress({ delay: 200 });
+      } catch (error) {
+        console.error(error);
+        addWarning(`주소 검색 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+        hideMapLoadingProgress();
+      }
+    }
+
+    async function fetchAdministrativeBoundaryBounds(options = {}) {
+      const cacheKey = normalizeWhitespace(options.key || "");
+      if (cacheKey && state.boundaryCache.has(cacheKey)) {
+        return state.boundaryCache.get(cacheKey);
+      }
+
+      const payload = await requestJsonp(VWORLD_DATA_ENDPOINT, {
+        service: "data",
+        request: "GetFeature",
+        version: "2.0",
+        format: "json",
+        size: "10",
+        page: "1",
+        geometry: "true",
+        attribute: "false",
+        crs: "EPSG:4326",
+        data: options.dataLayer,
+        attrfilter: options.attrfilter,
+        key: API_KEY_VWORLD,
+        domain: VWORLD_DATA_DOMAIN
+      });
+
+      const features = extractParcelFeatures(payload);
+      if (!features.length) {
+        return null;
+      }
+
+      const bounds = L.geoJSON({
+        type: "FeatureCollection",
+        features
+      }).getBounds();
+      if (!bounds.isValid()) {
+        return null;
+      }
+
+      if (cacheKey) {
+        state.boundaryCache.set(cacheKey, bounds);
+      }
+      return bounds;
+    }
+
+    function queueAutoLoadForMapViewport(options = {}) {
+      if (!state.map) {
+        return;
+      }
+
+      window.clearTimeout(state.mapRegionSyncTimer);
+      state.mapRegionSyncTimer = window.setTimeout(() => {
+        syncRegionToMapViewport({
+          trigger: options.trigger || "map",
+          fitBounds: options.fitBounds === true
+        }).catch((error) => {
+          console.error(error);
+          handleLoadError(error);
+        });
+      }, options.delay ?? 180);
+    }
+
+    async function syncRegionToMapViewport(options = {}) {
+      if (!state.map) {
+        return;
+      }
+
+      if (state.map.getZoom() < PERMIT_VISIBLE_MIN_ZOOM) {
+        cancelViewportPrefetch();
+        return;
+      }
+
+      const viewport = await lookupRegionsFromViewport();
+      if (!viewport.regions.length) {
+        cancelViewportPrefetch();
+        return;
+      }
+
+      await loadCurrentSelection({
+        regions: viewport.regions,
+        loadScope: "all",
+        trigger: options.trigger || "map",
+        silentIfIncomplete: false
+      });
+    }
+
+    async function lookupRegionsFromViewport() {
+      if (!state.map) {
+        return {
+          bounds: null,
+          regions: []
+        };
+      }
+
+      return lookupRegionsFromBounds(state.map.getBounds(), {
+        divisions: VIEWPORT_SAMPLE_GRID
+      });
+    }
+
+    async function lookupRegionsFromBounds(bounds, options = {}) {
+      if (!bounds) {
+        return {
+          bounds: null,
+          regions: []
+        };
+      }
+
+      const samplePoints = buildViewportSamplePoints(bounds, options.divisions || VIEWPORT_SAMPLE_GRID);
+      const responses = await Promise.allSettled(samplePoints.map((point) => lookupRegionFromPoint(point)));
+      const regionMap = new Map();
+
+      responses.forEach((result) => {
+        if (result.status !== "fulfilled" || !result.value?.regionCode) {
+          return;
+        }
+        regionMap.set(result.value.regionCode, result.value);
+      });
+
+      if (!regionMap.size) {
+        const center = typeof bounds.getCenter === "function" ? bounds.getCenter() : null;
+        const centerRegion = center ? await lookupRegionFromPoint([center.lng, center.lat]) : null;
+        if (centerRegion?.regionCode) {
+          regionMap.set(centerRegion.regionCode, centerRegion);
+        }
+      }
+
+      return {
+        bounds,
+        regions: Array.from(regionMap.values()).sort((left, right) => left.regionCode.localeCompare(right.regionCode))
+      };
+    }
+
+    function buildViewportSamplePoints(bounds, divisions = 3) {
+      if (!bounds) {
+        return [];
+      }
+
+      const west = bounds.getWest();
+      const east = bounds.getEast();
+      const south = bounds.getSouth();
+      const north = bounds.getNorth();
+      const points = [];
+      const steps = Math.max(2, divisions);
+
+      for (let row = 0; row < steps; row += 1) {
+        const rowRatio = steps === 1 ? 0.5 : row / (steps - 1);
+        const lat = south + ((north - south) * rowRatio);
+        for (let col = 0; col < steps; col += 1) {
+          const colRatio = steps === 1 ? 0.5 : col / (steps - 1);
+          const lng = west + ((east - west) * colRatio);
+          points.push([lng, lat]);
+        }
+      }
+
+      return points;
+    }
+
+    function expandLatLngBounds(bounds, ratio = VIEWPORT_PREFETCH_EXPANSION_RATIO) {
+      if (!bounds || !window.L) {
+        return null;
+      }
+
+      const south = bounds.getSouth();
+      const north = bounds.getNorth();
+      const west = bounds.getWest();
+      const east = bounds.getEast();
+      const latPadding = Math.max(0.0004, (north - south) * ratio);
+      const lngPadding = Math.max(0.0004, (east - west) * ratio);
+
+      return L.latLngBounds(
+        [south - latPadding, west - lngPadding],
+        [north + latPadding, east + lngPadding]
+      );
+    }
+
+    function cancelViewportPrefetch() {
+      if (state.prefetchTimer) {
+        window.clearTimeout(state.prefetchTimer);
+        state.prefetchTimer = 0;
+      }
+      state.prefetchToken += 1;
+    }
+
+    function scheduleViewportPrefetch(options = {}) {
+      if (!state.map || state.map.getZoom() < PERMIT_VISIBLE_MIN_ZOOM) {
+        return;
+      }
+
+      const bounds = options.bounds || state.map.getBounds();
+      const currentRegions = Array.isArray(options.regions)
+        ? options.regions.filter((item) => item?.regionCode)
+        : [];
+      const loadScope = normalizeWhitespace(options.loadScope || "all") || "all";
+      if (!bounds || !currentRegions.length) {
+        return;
+      }
+
+      cancelViewportPrefetch();
+      const prefetchToken = state.prefetchToken;
+      state.prefetchTimer = window.setTimeout(() => {
+        state.prefetchTimer = 0;
+        prefetchViewportSurroundings({
+          bounds,
+          currentRegions,
+          loadScope,
+          prefetchToken
+        }).catch((error) => {
+          if (prefetchToken !== state.prefetchToken) {
+            return;
+          }
+          console.error(error);
+        });
+      }, VIEWPORT_PREFETCH_DELAY);
+    }
+
+    async function prefetchViewportSurroundings(options = {}) {
+      const {
+        bounds = null,
+        currentRegions = [],
+        loadScope = "all",
+        prefetchToken = 0
+      } = options;
+
+      if (prefetchToken !== state.prefetchToken || !state.map || state.map.getZoom() < PERMIT_VISIBLE_MIN_ZOOM) {
+        return;
+      }
+
+      const expandedBounds = expandLatLngBounds(bounds, VIEWPORT_PREFETCH_EXPANSION_RATIO);
+      if (!expandedBounds) {
+        return;
+      }
+
+      const viewport = await lookupRegionsFromBounds(expandedBounds, {
+        divisions: VIEWPORT_PREFETCH_SAMPLE_GRID
+      });
+      if (prefetchToken !== state.prefetchToken) {
+        return;
+      }
+
+      const currentRegionCodes = new Set(
+        currentRegions
+          .map((item) => normalizeWhitespace(item?.regionCode || ""))
+          .filter(Boolean)
+      );
+      const prefetchRegions = viewport.regions
+        .filter((region) => {
+          const regionCode = normalizeWhitespace(region?.regionCode || "");
+          if (!regionCode || currentRegionCodes.has(regionCode)) {
+            return false;
+          }
+          return !state.regionCache.has(buildRegionLoadKey(region, loadScope));
+        })
+        .slice(0, VIEWPORT_PREFETCH_REGION_LIMIT);
+
+      for (let index = 0; index < prefetchRegions.length; index += 1) {
+        if (prefetchToken !== state.prefetchToken) {
+          return;
+        }
+
+        const region = prefetchRegions[index];
+        try {
+          const dataset = await loadRegionDataset(region, {
+            loadScope,
+            regionIndex: index,
+            totalRegions: prefetchRegions.length,
+            silent: true
+          });
+          state.regionCache.set(buildRegionLoadKey(region, loadScope), dataset);
+        } catch (error) {
+          if (prefetchToken !== state.prefetchToken) {
+            return;
+          }
+          console.error(error);
+        }
+      }
+    }
+
+    async function lookupRegionFromMapCenter() {
+      if (!state.map) {
+        return null;
+      }
+
+      const center = state.map.getCenter();
+      return lookupRegionFromPoint([center.lng, center.lat]);
+    }
+
+    async function lookupRegionFromPoint(point) {
+      const [lng, lat] = Array.isArray(point) ? point : [];
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return null;
+      }
+
+      const cellLng = Math.round(lng / REGION_LOOKUP_GRID_DEG);
+      const cellLat = Math.round(lat / REGION_LOOKUP_GRID_DEG);
+      const cacheKey = `${cellLng}:${cellLat}`;
+      const cached = state.regionLookupCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const promise = (async () => {
+        const payload = await requestJsonp(VWORLD_ADDRESS_ENDPOINT, {
+          service: "address",
+          request: "getAddress",
+          version: "2.0",
+          crs: "epsg:4326",
+          point: `${lng},${lat}`,
+          format: "json",
+          type: "parcel",
+          zipcode: "false",
+          simple: "false",
+          key: API_KEY_VWORLD
+        });
+
+        const resultStatus = payload?.response?.status;
+        if (resultStatus && resultStatus !== "OK") {
+          const errorText = payload?.response?.error?.text || payload?.response?.error?.message || "주소 변환 오류";
+          throw new UserVisibleError(errorText, { tone: "error" });
+        }
+
+        const structure = payload?.response?.result?.[0]?.structure;
+        const regionCode = digitsOnly(structure?.level4LC || "").slice(0, 10);
+        if (regionCode.length !== 10) {
+          return null;
+        }
+
+        const level1 = normalizeWhitespace(structure?.level1 || "");
+        const level2 = normalizeWhitespace(structure?.level2 || "");
+        const level4 = normalizeWhitespace(structure?.level4L || structure?.level4A || "");
+
+        return {
+          regionCode,
+          sigunguCd: regionCode.slice(0, 5),
+          bjdongCd: regionCode.slice(5, 10),
+          regionLabel: [level1, level2, level4].filter(Boolean).join(" ")
+        };
+      })();
+
+      const guarded = promise.catch((error) => {
+        state.regionLookupCache.delete(cacheKey);
+        throw error;
+      }).then((value) => {
+        if (value === null) {
+          state.regionLookupCache.delete(cacheKey);
+        }
+        return value;
+      });
+
+      state.regionLookupCache.set(cacheKey, guarded);
+      return guarded;
+    }
+
+    async function loadCurrentSelection(options = {}) {
+      const {
+        regions: regionsOverride = null,
+        loadScope: loadScopeOverride = "",
+        trigger = "manual",
+        silentIfIncomplete = false
+      } = options;
+
+      if (state.isLoading) {
+        if (trigger !== "manual") {
+          state.queuedAutoLoad = true;
+        }
+        return;
+      }
+
+      const regions = Array.isArray(regionsOverride)
+        ? regionsOverride.filter((item) => item?.regionCode)
+        : [];
+      if (!regions.length) {
+        if (silentIfIncomplete) {
+          return;
+        }
+        throw new UserVisibleError("현재 화면 범위에서 법정동 코드를 찾지 못했습니다.", { tone: "error" });
+      }
+
+      const loadScope = normalizeWhitespace(loadScopeOverride || "all") || "all";
+      const viewportKey = buildViewportLoadKey(regions, loadScope);
+      const viewportBounds = state.map?.getBounds() || null;
+      cancelViewportPrefetch();
+      const missingRegions = regions.filter((region) => !state.regionCache.has(buildRegionLoadKey(region, loadScope)));
+
+      if (!missingRegions.length) {
+        applyViewportDataFromCache({
+          regions,
+          loadScope,
+          viewportKey,
+          trigger,
+          bounds: viewportBounds
+        });
+        scheduleViewportPrefetch({
+          regions,
+          loadScope,
+          bounds: viewportBounds
+        });
+        return;
+      }
+
+      const loadToken = state.loadToken + 1;
+      state.loadToken = loadToken;
+      let loadCompleted = false;
+
+      clearWarnings();
+      clearLoadedData();
+
+      try {
+        state.isLoading = true;
+        state.queuedAutoLoad = false;
+        setButtonLoading(true);
+        closeSidebar({ restoreFocus: false });
+        renderSelectedParcel(null, []);
+        renderLegend([]);
+        updateStatus("현재 화면에 걸친 법정동의 인허가와 필지를 확인하는 중입니다.", "loading", `${missingRegions.length}개 지역`);
+        setMapLoadingProgress("화면 영역 인허가 확인 중", 0);
+        setMapSummary("화면 영역 조회 중", `현재 화면에 걸친 ${regions.length}개 법정동 중 ${missingRegions.length}개 지역을 새로 불러옵니다.`);
+
+        for (let index = 0; index < missingRegions.length; index += 1) {
+          const region = missingRegions[index];
+          const dataset = await loadRegionDataset(region, {
+            loadScope,
+            regionIndex: index,
+            totalRegions: missingRegions.length
+          });
+          if (loadToken !== state.loadToken) {
+            return;
+          }
+          state.regionCache.set(buildRegionLoadKey(region, loadScope), dataset);
+        }
+
+        applyViewportDataFromCache({
+          regions,
+          loadScope,
+          viewportKey,
+          trigger,
+          bounds: viewportBounds
+        });
+        if (!state.queuedAutoLoad) {
+          scheduleViewportPrefetch({
+            regions,
+            loadScope,
+            bounds: viewportBounds
+          });
+        }
+        setMapLoadingProgress("지도에 표시 완료", 100);
+        loadCompleted = true;
+      } catch (error) {
+        if (loadToken === state.loadToken) {
+          state.loadedRegionKey = "";
+          console.error(error);
+          handleLoadError(error);
+        }
+      } finally {
+        state.isLoading = false;
+        setButtonLoading(false);
+        hideMapLoadingProgress({ delay: loadCompleted ? 420 : 0 });
+        if (state.queuedAutoLoad) {
+          state.queuedAutoLoad = false;
+          queueAutoLoadForMapViewport({
+            trigger: "queued",
+            fitBounds: false
+          });
+        }
+      }
+    }
+
+    async function runWithConcurrencyLimit(items, limit, worker) {
+      const safeLimit = Math.max(1, Math.min(limit, items.length));
+      if (!items.length) {
+        return [];
+      }
+      const results = new Array(items.length);
+      let nextIndex = 0;
+      const runners = Array.from({ length: safeLimit }, async () => {
+        while (true) {
+          const current = nextIndex;
+          nextIndex += 1;
+          if (current >= items.length) {
+            return;
+          }
+          results[current] = await worker(items[current], current);
+        }
+      });
+      await Promise.all(runners);
+      return results;
+    }
+
+    async function loadRegionDataset(region, options = {}) {
+      const cacheKey = buildRegionLoadKey(region, options.loadScope || "all");
+      const cached = state.regionCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const inflight = state.regionInflight.get(cacheKey);
+      if (inflight) {
+        return inflight;
+      }
+
+      const promise = loadRegionDatasetUncached(region, options).then((dataset) => {
+        state.regionCache.set(cacheKey, dataset);
+        return dataset;
+      }).finally(() => {
+        state.regionInflight.delete(cacheKey);
+      });
+      state.regionInflight.set(cacheKey, promise);
+      return promise;
+    }
+
+    async function loadRegionDatasetUncached(region, options = {}) {
+      const reporter = options.silent ? null : (message, percent, meta, label = "화면 영역 인허가 확인 중") => {
+        const totalRegions = Math.max(1, options.totalRegions || 1);
+        const regionIndex = Math.max(0, options.regionIndex || 0);
+        const overallPercent = ((regionIndex + (Math.max(0, Math.min(100, percent)) / 100)) / totalRegions) * 100;
+        setMapLoadingProgress(label, overallPercent);
+        updateStatus(`${region.regionLabel} ${message}`, "loading", `${regionIndex + 1}/${totalRegions} 지역`);
+        if (meta) {
+          elements.statusMeta.textContent = meta;
+        }
+      };
+
+      reporter?.("인허가 목록을 확인하는 중입니다.", 0, "인허가");
+      const permits = await fetchAllPermits(region, options.loadScope || "all", {
+        onProgress: reporter,
+        silent: options.silent === true
+      });
+      reporter?.("연속지적도 필지를 확인하는 중입니다.", 72, "필지");
+      const parcelFeatures = await fetchParcelFeatures(region, {
+        onProgress: reporter,
+        silent: options.silent === true
+      });
+      reporter?.("지도 표시용 데이터를 정리하는 중입니다.", 96, "정리", "지도에 표시할 정보 정리 중");
+
+      const normalized = hydratePermitPlacement(parcelFeatures, permits);
+      return {
+        regionCode: region.regionCode,
+        regionLabel: region.regionLabel,
+        permitCount: permits.length,
+        missingPnuCount: permits.filter((item) => !item.pnu).length,
+        unmatchedPermitCount: normalized.unmatchedPermitCount,
+        parcelFeatures: normalized.parcelFeatures,
+        parcelFeatureIndex: normalized.parcelFeatureIndex,
+        permitsByPnu: normalized.permitsByPnu,
+        mappedPermits: normalized.mappedPermits
+      };
+    }
+
+    function applyViewportDataFromCache(options = {}) {
+      const renderData = buildViewportRenderData(options.regions || [], options.loadScope || "all", options.bounds || state.map?.getBounds());
+      const preservedSelectedPnu = normalizeWhitespace(state.selectedPnu || "");
+      const sidebarWasOpen = state.isSidebarOpen;
+
+      clearWarnings();
+      clearLoadedData();
+
+      state.permits = renderData.mappedPermits;
+      state.permitsByPnu = renderData.permitsByPnu;
+      state.parcelFeatures = renderData.parcelFeatures;
+      state.parcelFeatureIndex = renderData.parcelFeatureIndex;
+      state.categoryStats = buildCategoryStats(state.permits);
+      state.categoryColors = buildCategoryColorMap(state.categoryStats);
+      state.loadedRegionKey = options.viewportKey || "";
+
+      renderParcelLayer(state.parcelFeatures);
+      renderPermitDots(state.permits);
+      renderLegend(state.categoryStats);
+      updateStats({
+        parcelCount: state.parcelFeatures.length,
+        permitCount: renderData.visiblePermitCount,
+        mappedPermitCount: state.permits.length,
+        selectedPermitCount: 0
+      });
+
+      if (preservedSelectedPnu && state.parcelFeatureIndex.has(preservedSelectedPnu)) {
+        const feature = state.parcelFeatureIndex.get(preservedSelectedPnu);
+        const permits = (state.permitsByPnu.get(preservedSelectedPnu) || []).slice().sort(comparePermits);
+        state.selectedPnu = preservedSelectedPnu;
+        renderSelectedParcel(feature, permits);
+        highlightSelectedParcel(feature);
+        updateStats({
+          selectedPermitCount: permits.length
+        });
+        if (sidebarWasOpen) {
+          openSidebar({ focus: false });
+        }
+      } else {
+        renderSelectedParcel(null, []);
+        if (sidebarWasOpen) {
+          closeSidebar({ restoreFocus: false });
+        }
+      }
+
+      if (renderData.missingPnuCount) {
+        addWarning(`현재 화면에 걸친 조회 결과 중 인허가 ${renderData.missingPnuCount}건은 PNU가 없어 지도 점에서 제외했습니다.`);
+      }
+      if (renderData.unmatchedPermitCount) {
+        addWarning(`현재 화면에 걸친 조회 결과 중 인허가 ${renderData.unmatchedPermitCount}건은 필지와 매칭되지 않아 지도 점에서 제외했습니다.`);
+      }
+
+      updateStatus(
+        `현재 화면에 보이는 필지 ${state.parcelFeatures.length}개와 인허가 점 ${state.permits.length}건을 표시했습니다. 화면을 이동하면 보이는 영역 기준으로 다시 갱신됩니다.`,
+        "success",
+        options.trigger === "manual" ? "Manual" : "Viewport"
+      );
+      setMapSummary(
+        "건축인허가 지도",
+        `현재 화면에 걸친 법정동 ${renderData.regionCount}곳을 확인했고, 화면 안에 보이는 필지 ${state.parcelFeatures.length}개와 인허가 점 ${state.permits.length}건을 표시했습니다.`
+      );
+    }
+
+    function buildViewportRenderData(regions, loadScope, bounds) {
+      const viewportBounds = bounds || state.map?.getBounds();
+      const visibleFeatureMap = new Map();
+      let missingPnuCount = 0;
+      let unmatchedPermitCount = 0;
+      let visiblePermitCount = 0;
+
+      regions.forEach((region) => {
+        const dataset = state.regionCache.get(buildRegionLoadKey(region, loadScope));
+        if (!dataset) {
+          return;
+        }
+        missingPnuCount += dataset.missingPnuCount;
+        unmatchedPermitCount += dataset.unmatchedPermitCount;
+        dataset.parcelFeatures.forEach((feature) => {
+          const pnu = normalizeWhitespace(feature?.properties?.pnu || "");
+          if (!pnu || !doesFeatureIntersectViewport(feature, viewportBounds)) {
+            return;
+          }
+          visibleFeatureMap.set(pnu, feature);
+        });
+      });
+
+      const parcelFeatures = Array.from(visibleFeatureMap.values());
+      const parcelFeatureIndex = new Map(parcelFeatures.map((feature) => [normalizeWhitespace(feature.properties?.pnu || ""), feature]));
+      const permitsByPnu = new Map();
+      const mappedPermits = [];
+
+      regions.forEach((region) => {
+        const dataset = state.regionCache.get(buildRegionLoadKey(region, loadScope));
+        if (!dataset) {
+          return;
+        }
+        dataset.permitsByPnu.forEach((permits, pnu) => {
+          if (!parcelFeatureIndex.has(pnu)) {
+            return;
+          }
+          const merged = permitsByPnu.get(pnu) || [];
+          merged.push(...permits);
+          permitsByPnu.set(pnu, merged);
+        });
+      });
+
+      permitsByPnu.forEach((permits, pnu) => {
+        const sorted = permits.slice().sort(comparePermits);
+        permitsByPnu.set(pnu, sorted);
+        mappedPermits.push(...sorted);
+        visiblePermitCount += sorted.length;
+      });
+
+      return {
+        regionCount: regions.length,
+        parcelFeatures,
+        parcelFeatureIndex,
+        permitsByPnu,
+        mappedPermits,
+        missingPnuCount,
+        unmatchedPermitCount,
+        visiblePermitCount
+      };
+    }
+
+    function buildViewportLoadKey(regions, loadScope) {
+      const regionCodes = regions
+        .map((region) => normalizeWhitespace(region?.regionCode || ""))
+        .filter(Boolean)
+        .sort();
+      return `${regionCodes.join("|")}:${normalizeWhitespace(loadScope || "all") || "all"}`;
+    }
+
+    function buildRegionLoadKey(region, loadScope) {
+      return `${region.regionCode}:${normalizeWhitespace(loadScope || "all")}`;
+    }
+
+    function setSelectOptions(selectElement, options, config = {}) {
+      if (!selectElement) {
+        return;
+      }
+
+      const {
+        placeholder = "선택",
+        selectedValue = "",
+        disabled = false
+      } = config;
+
+      const normalizedSelectedValue = normalizeWhitespace(selectedValue);
+      selectElement.innerHTML = "";
+
+      const placeholderOption = document.createElement("option");
+      placeholderOption.value = "";
+      placeholderOption.textContent = placeholder;
+      selectElement.appendChild(placeholderOption);
+
+      options.forEach((optionValue) => {
+        const option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = optionValue;
+        selectElement.appendChild(option);
+      });
+
+      if (normalizedSelectedValue && options.includes(normalizedSelectedValue)) {
+        selectElement.value = normalizedSelectedValue;
+      } else {
+        selectElement.value = "";
+      }
+
+      selectElement.disabled = disabled || !options.length;
+    }
+
+    function lookupLegalRegionFromLocalData(input) {
+      const normalizedSido = normalizeSido(input.sido);
+      const normalizedSigungu = normalizeWhitespace(input.sigungu);
+      const normalizedLegalDong = normalizeWhitespace(input.legalDong);
+
+      if (!normalizedSido || !normalizedSigungu || !normalizedLegalDong) {
+        return null;
+      }
+
+      const sido = getLegalRegionSidos().find((item) => item.name === normalizedSido);
+      const sigungu = Array.isArray(sido?.sigungus)
+        ? sido.sigungus.find((item) => item.name === normalizedSigungu)
+        : null;
+      const legalDong = Array.isArray(sigungu?.legalDongs)
+        ? sigungu.legalDongs.find((item) => item.name === normalizedLegalDong)
+        : null;
+
+      const regionCode = digitsOnly(legalDong?.regionCode || "");
+      if (regionCode.length < 10) {
+        return null;
+      }
+
+      return {
+        regionCode,
+        sigunguCd: regionCode.slice(0, 5),
+        bjdongCd: regionCode.slice(5, 10),
+        regionLabel: [normalizedSido, normalizedSigungu, normalizedLegalDong].join(" ")
+      };
+    }
+
+    async function fetchAllPermits(region, loadScope, options = {}) {
+      const endpoints = [];
+      if (loadScope === "all" || loadScope === "arch") {
+        endpoints.push({
+          source: "arch",
+          endpoint: ARCH_PERMIT_ENDPOINT,
+          label: "건축 인허가"
+        });
+      }
+      if (loadScope === "all" || loadScope === "housing") {
+        endpoints.push({
+          source: "housing",
+          endpoint: HOUSING_PERMIT_ENDPOINT,
+          label: "주택 인허가"
+        });
+      }
+
+      const allPermits = [];
+      let totalPagesAcross = 0;
+      let pagesDone = 0;
+
+      const reportProgress = (label, pageInfo) => {
+        const denom = Math.max(1, totalPagesAcross || endpoints.length);
+        const ratio = Math.min(1, pagesDone / denom);
+        options.onProgress?.(
+          `${label} ${pageInfo}`,
+          ratio * 70,
+          `${label} ${pageInfo}`,
+          "화면 영역 인허가 확인 중"
+        );
+        if (!options.silent) {
+          updateStatus(`${label} ${pageInfo} 수집 중`, "loading", `${label} ${pageInfo}`);
+        }
+      };
+
+      await Promise.all(endpoints.map(async (target) => {
+        let firstPage;
+        try {
+          firstPage = await fetchPermitPage(target.endpoint, region.sigunguCd, region.bjdongCd, 1);
+        } catch (error) {
+          console.error(error);
+          if (!options.silent) {
+            addWarning(`${target.label} 1페이지 조회에 실패해 해당 항목은 건너뛰었습니다.`);
+          }
+          return;
+        }
+
+        const firstItems = extractItems(firstPage);
+        const totalCount = extractTotalCount(firstPage);
+        const totalPages = Math.max(1, Math.ceil(totalCount / PERMIT_PAGE_SIZE));
+        totalPagesAcross += totalPages;
+        pagesDone += 1;
+
+        allPermits.push(...firstItems.map((item) => normalizePermitItem(item, target.source)));
+        reportProgress(target.label, `1/${totalPages}`);
+
+        if (totalPages <= 1) {
+          return;
+        }
+
+        const remainingPages = [];
+        for (let page = 2; page <= totalPages; page += 1) {
+          remainingPages.push(page);
+        }
+
+        await runWithConcurrencyLimit(remainingPages, PERMIT_PAGE_CONCURRENCY, async (page) => {
+          try {
+            const payload = await fetchPermitPage(target.endpoint, region.sigunguCd, region.bjdongCd, page);
+            allPermits.push(...extractItems(payload).map((item) => normalizePermitItem(item, target.source)));
+          } catch (error) {
+            console.error(error);
+            if (!options.silent) {
+              addWarning(`${target.label} ${page}페이지 조회에 실패해 해당 페이지는 건너뛰었습니다.`);
+            }
+          } finally {
+            pagesDone += 1;
+            reportProgress(target.label, `${pagesDone <= totalPages ? pagesDone : totalPages}/${totalPages}`);
+          }
+        });
+      }));
+
+      options.onProgress?.(
+        "인허가 목록을 모두 확인했습니다.",
+        70,
+        "인허가 완료",
+        "화면 영역 인허가 확인 중"
+      );
+      return dedupePermits(allPermits);
+    }
+
+    function fetchPermitPage(endpoint, sigunguCd, bjdongCd, pageNo) {
+      const params = new URLSearchParams({
+        serviceKey: API_KEY_PUBLIC,
+        sigunguCd,
+        bjdongCd,
+        numOfRows: String(PERMIT_PAGE_SIZE),
+        pageNo: String(pageNo),
+        _type: "json"
+      });
+      return requestJson(endpoint, params);
+    }
+
+    async function fetchParcelFeatures(region, options = {}) {
+      const requestParcelPage = (page) => requestJsonp(VWORLD_DATA_ENDPOINT, {
+        service: "data",
+        request: "GetFeature",
+        version: "2.0",
+        format: "json",
+        size: String(PARCEL_PAGE_SIZE),
+        page: String(page),
+        geometry: "true",
+        attribute: "true",
+        crs: "EPSG:4326",
+        data: "LP_PA_CBND_BUBUN",
+        attrfilter: `pnu:like:${region.regionCode}`,
+        key: API_KEY_VWORLD,
+        domain: VWORLD_DATA_DOMAIN
+      });
+
+      if (!options.silent) {
+        updateStatus(`연속지적도 1 페이지를 확인하는 중입니다.`, "loading", `필지 1/?`);
+      }
+
+      const firstPayload = await requestParcelPage(1);
+      const firstStatus = firstPayload?.response?.status;
+      if (firstStatus && firstStatus !== "OK") {
+        const errorText = firstPayload?.response?.error?.text || firstPayload?.response?.error?.message || "VWorld 응답 오류";
+        throw new UserVisibleError(errorText, { tone: "error" });
+      }
+
+      const parcelFeatures = extractParcelFeatures(firstPayload).slice();
+      const reportedPages = Number(firstPayload?.response?.page?.total || 1);
+      const totalPages = Number.isFinite(reportedPages) && reportedPages > 0 ? reportedPages : 1;
+      let pagesDone = 1;
+
+      options.onProgress?.(
+        `연속지적도 1/${totalPages} 페이지 수집됨`,
+        70 + ((1 / totalPages) * 26),
+        `필지 1/${totalPages}`,
+        "화면 영역 필지 확인 중"
+      );
+
+      if (totalPages > 1) {
+        const remainingPages = [];
+        for (let page = 2; page <= totalPages; page += 1) {
+          remainingPages.push(page);
+        }
+
+        await runWithConcurrencyLimit(remainingPages, PARCEL_PAGE_CONCURRENCY, async (page) => {
+          try {
+            const payload = await requestParcelPage(page);
+            const status = payload?.response?.status;
+            if (status && status !== "OK") {
+              if (!options.silent) {
+                addWarning(`연속지적도 ${page}페이지 조회에 실패해 해당 페이지는 건너뛰었습니다.`);
+              }
+              return;
+            }
+            parcelFeatures.push(...extractParcelFeatures(payload));
+          } catch (error) {
+            console.error(error);
+            if (!options.silent) {
+              addWarning(`연속지적도 ${page}페이지 조회에 실패해 해당 페이지는 건너뛰었습니다.`);
+            }
+          } finally {
+            pagesDone += 1;
+            const ratio = Math.min(1, pagesDone / totalPages);
+            options.onProgress?.(
+              `연속지적도 ${pagesDone}/${totalPages} 페이지 수집됨`,
+              70 + (ratio * 26),
+              `필지 ${pagesDone}/${totalPages}`,
+              "화면 영역 필지 확인 중"
+            );
+            if (!options.silent) {
+              updateStatus(`연속지적도 ${pagesDone}/${totalPages} 페이지를 수집했습니다.`, "loading", `필지 ${pagesDone}/${totalPages}`);
+            }
+          }
+        });
+      }
+
+      options.onProgress?.(
+        "연속지적도 필지 수집을 마쳤습니다.",
+        96,
+        "필지 완료",
+        "화면 영역 필지 확인 중"
+      );
+      return dedupeParcelFeatures(parcelFeatures);
+    }
+
+    function normalizePermitItem(item, source) {
+      const permitDate = source === "arch"
+        ? digitsOnly(item.archPmsDay || item.useAprDay || item.realStcnsDay)
+        : digitsOnly(item.apprvDay || item.stcnsDay || item.useInsptDay || item.useInsptSchedDay);
+      const typeName = source === "arch"
+        ? normalizeWhitespace(item.archGbCdNm || "")
+        : normalizeWhitespace(item.purpsCdNm || item.demolExtngGbCdNm || "");
+      const purposeName = source === "arch"
+        ? normalizeWhitespace(item.mainPurpsCdNm || "")
+        : normalizeWhitespace(item.purpsCdNm || "");
+      const permitDateFieldLabel = source === "arch" ? "허가일" : "승인일";
+      const categoryLabel = source === "arch"
+        ? `건축 · ${typeName || "기타"}`
+        : `주택 · ${typeName || "기본"}`;
+
+      return {
+        id: buildPermitId(item, source),
+        source,
+        sourceLabel: source === "arch" ? "건축 인허가" : "주택 인허가",
+        categoryLabel,
+        typeName: typeName || (source === "arch" ? "건축" : "주택"),
+        permitDate,
+        isRecentPermit: isRecentPermitDate(permitDate),
+        permitDateLabel: formatDateLabel(permitDate),
+        permitDateFieldLabel,
+        address: normalizeWhitespace(item.platPlc || ""),
+        pnu: buildPnuFromPermitItem(item),
+        buildingName: normalizeWhitespace(item.bldNm || ""),
+        purposeName,
+        landArea: parseOptionalNumber(item.platArea),
+        totalArea: parseOptionalNumber(item.totArea),
+        buildingArea: parseOptionalNumber(item.archArea),
+        householdCount: parseOptionalInteger(item.totHhldCnt || item.hhldCnt || item.fmlyCnt),
+        mainBuildingCount: parseOptionalInteger(item.mainBldCnt),
+        raw: item
+      };
+    }
+
+    function buildPermitId(item, source) {
+      const mgmKey = source === "arch"
+        ? normalizeWhitespace(item.mgmPmsrgstPk || "")
+        : normalizeWhitespace(item.mgmHsrgstPk || "");
+      if (mgmKey) {
+        return `${source}:${mgmKey}`;
+      }
+      return `${source}:${normalizeWhitespace(item.platPlc || "unknown")}:${item.rnum || Math.random().toString(16).slice(2)}`;
+    }
+
+    function buildPnuFromPermitItem(item) {
+      const sigunguCd = digitsOnly(item.sigunguCd).slice(0, 5);
+      const bjdongCd = digitsOnly(item.bjdongCd).slice(0, 5);
+      if (sigunguCd.length !== 5 || bjdongCd.length !== 5) {
+        return "";
+      }
+
+      const bonbun = digitsOnly(item.bun).padStart(4, "0").slice(-4);
+      const bubun = digitsOnly(item.ji).padStart(4, "0").slice(-4);
+      if (!bonbun || !bubun) {
+        return "";
+      }
+
+      const platGbCd = digitsOnly(item.platGbCd).slice(-1);
+      const address = normalizeWhitespace(item.platPlc || "");
+      const isMountain = platGbCd === "1" || /(^|\s)산\s*\d/.test(address);
+      const mountainFlag = isMountain ? "2" : "1";
+      return `${sigunguCd}${bjdongCd}${mountainFlag}${bonbun}${bubun}`;
+    }
+
+    function dedupePermits(items) {
+      const deduped = new Map();
+      items.forEach((item) => {
+        if (!item?.id) {
+          return;
+        }
+        if (!deduped.has(item.id)) {
+          deduped.set(item.id, item);
+        }
+      });
+      return Array.from(deduped.values()).sort(comparePermits);
+    }
+
+    function dedupeParcelFeatures(features) {
+      const deduped = new Map();
+      features.forEach((feature) => {
+        const pnu = normalizeWhitespace(feature?.properties?.pnu || "");
+        if (!pnu || deduped.has(pnu)) {
+          return;
+        }
+        if (feature.properties && !feature.properties.__bbox && feature.geometry) {
+          feature.properties.__bbox = getGeometryBounds(feature.geometry);
+        }
+        deduped.set(pnu, feature);
+      });
+      return Array.from(deduped.values());
+    }
+
+    function hydratePermitPlacement(parcelFeatures, permits) {
+      const parcelFeatureIndex = new Map(parcelFeatures.map((feature) => [normalizeWhitespace(feature.properties?.pnu || ""), feature]));
+      const permitsByPnu = new Map();
+      let unmatchedPermitCount = 0;
+
+      permits.forEach((permit) => {
+        if (!permit.pnu) {
+          return;
+        }
+        const feature = parcelFeatureIndex.get(permit.pnu);
+        if (!feature) {
+          unmatchedPermitCount += 1;
+          return;
+        }
+        const list = permitsByPnu.get(permit.pnu) || [];
+        list.push(permit);
+        permitsByPnu.set(permit.pnu, list);
+      });
+
+      const mappedPermits = [];
+      permitsByPnu.forEach((list) => {
+        list.sort(comparePermits);
+        mappedPermits.push(...list);
+      });
+
+      return {
+        parcelFeatures,
+        parcelFeatureIndex,
+        permitsByPnu,
+        mappedPermits,
+        unmatchedPermitCount
+      };
+    }
+
+    function renderParcelLayer(features) {
+      if (!state.map) {
+        return;
+      }
+      if (state.parcelLayer) {
+        state.map.removeLayer(state.parcelLayer);
+      }
+
+      state.parcelLayer = L.geoJSON(
+        {
+          type: "FeatureCollection",
+          features
+        },
+        {
+          renderer: state.pathRenderer,
+          style: {
+            color: "rgba(71, 57, 39, 0.34)",
+            weight: 1,
+            opacity: 0.9,
+            fillColor: "#ffffff",
+            fillOpacity: 0.02
+          },
+          onEachFeature(feature, layer) {
+            const pnu = normalizeWhitespace(feature?.properties?.pnu || "");
+            layer.on("click", () => {
+              selectParcel(pnu);
+            });
+          }
+        }
+      ).addTo(state.map);
+    }
+
+    function renderPermitDots(permits) {
+      if (!state.map) {
+        return;
+      }
+      if (state.permitMarkersLayer) {
+        state.map.removeLayer(state.permitMarkersLayer);
+      }
+
+      const markers = [];
+      state.permitsByPnu.forEach((parcelPermits, pnu) => {
+        const feature = state.parcelFeatureIndex.get(pnu);
+        if (!feature) {
+          return;
+        }
+
+        const points = buildParcelPointLayout(feature, parcelPermits.length);
+        parcelPermits.forEach((permit, index) => {
+          const coordinate = points[index] || points[0];
+          if (!coordinate) {
+            return;
+          }
+          const marker = createPermitMarker(permit, coordinate);
+          marker.on("click", () => {
+            selectParcel(pnu, { focusPermitId: permit.id });
+          });
+          markers.push(marker);
+        });
+      });
+
+      state.permitMarkersLayer = L.layerGroup(markers);
+      updatePermitVisibility();
+    }
+
+    function buildParcelPointLayout(feature, count) {
+      const geometry = feature?.geometry;
+      if (!geometry || count < 1) {
+        return [];
+      }
+
+      const polygon = extractPrimaryPolygon(geometry);
+      if (!polygon.length) {
+        return [];
+      }
+
+      const centroid = ensurePointInsideGeometry(computePolygonCentroid(polygon), geometry) || polygon[0];
+      const bounds = getGeometryBounds(geometry);
+      const minSpan = Math.min(bounds.maxLng - bounds.minLng, bounds.maxLat - bounds.minLat);
+      const maxSpan = Math.max(bounds.maxLng - bounds.minLng, bounds.maxLat - bounds.minLat);
+      const baseRadius = Math.max(Math.min(minSpan * 0.2, maxSpan * 0.08), 0.000015);
+
+      const points = [];
+      if (count === 1) {
+        points.push(centroid);
+        return points;
+      }
+
+      points.push(centroid);
+      let ringIndex = 1;
+      while (points.length < count && ringIndex < 12) {
+        const radius = baseRadius * ringIndex;
+        const steps = Math.max(6, ringIndex * 6);
+        for (let step = 0; step < steps && points.length < count; step += 1) {
+          const angle = (Math.PI * 2 * step) / steps;
+          const candidate = [
+            centroid[0] + Math.cos(angle) * radius,
+            centroid[1] + Math.sin(angle) * radius
+          ];
+          const inside = ensurePointInsideGeometry(candidate, geometry);
+          if (inside) {
+            points.push(inside);
+          }
+        }
+        ringIndex += 1;
+      }
+
+      while (points.length < count) {
+        points.push(centroid);
+      }
+
+      return points;
+    }
+
+    function createPermitMarker(permit, coordinate) {
+      const latLng = [coordinate[1], coordinate[0]];
+      const color = getCategoryColor(permit.categoryLabel);
+      if (permit.isRecentPermit) {
+        return L.marker(latLng, {
+          icon: getRecentPermitStarIcon(color),
+          keyboard: false
+        });
+      }
+
+      return L.circleMarker(latLng, {
+        renderer: state.pathRenderer,
+        radius: 6,
+        color: "rgba(255, 255, 255, 0.95)",
+        weight: 1.2,
+        fillColor: color,
+        fillOpacity: 0.94
+      });
+    }
+
+    function getRecentPermitStarIcon(color) {
+      const normalizedColor = normalizeWhitespace(color || "#c05d35");
+      if (state.starIconCache.has(normalizedColor)) {
+        return state.starIconCache.get(normalizedColor);
+      }
+
+      const icon = L.divIcon({
+        className: "permit-star-icon",
+        html: buildRecentPermitStarSvg(normalizedColor),
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      });
+      state.starIconCache.set(normalizedColor, icon);
+      return icon;
+    }
+
+    function buildRecentPermitStarSvg(color) {
+      return `
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <polygon
+            points="12,1.8 15.1,8.2 22.1,9.2 17,14 18.4,21.1 12,17.6 5.6,21.1 7,14 1.9,9.2 8.9,8.2"
+            fill="${escapeHtml(color)}"
+            stroke="rgba(255,255,255,0.96)"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          ></polygon>
+        </svg>
+      `;
+    }
+
+    function selectParcel(pnu, options = {}) {
+      const normalizedPnu = normalizeWhitespace(pnu);
+      const feature = state.parcelFeatureIndex.get(normalizedPnu);
+      if (!feature) {
+        return;
+      }
+
+      state.selectedPnu = normalizedPnu;
+      state.selectedFocusPermitId = normalizeWhitespace(options.focusPermitId || "");
+      const permits = (state.permitsByPnu.get(normalizedPnu) || []).slice().sort(comparePermits);
+      renderSelectedParcel(feature, permits);
+      updateStats({
+        selectedPermitCount: permits.length
+      });
+      highlightSelectedParcel(feature);
+
+      const bounds = L.geoJSON(feature).getBounds();
+      if (bounds.isValid()) {
+        state.map.fitBounds(bounds, {
+          padding: [36, 36],
+          maxZoom: 19
+        });
+      }
+
+      if (permits.length) {
+        updateStatus(`선택한 필지에서 인허가 ${permits.length}건을 확인했습니다.`, "success", "필지 선택");
+      } else {
+        updateStatus("선택한 필지에는 조회된 건축·주택 인허가가 없습니다.", "warning", "필지 선택");
+      }
+
+      openSidebar({ focus: false });
+    }
+
+    function highlightSelectedParcel(feature) {
+      if (!state.map) {
+        return;
+      }
+      if (state.selectedLayer) {
+        state.map.removeLayer(state.selectedLayer);
+      }
+      state.selectedLayer = L.geoJSON(feature, {
+        renderer: state.pathRenderer,
+        style: {
+          color: "#c05d35",
+          weight: 2.4,
+          opacity: 1,
+          fillColor: "rgba(192, 93, 53, 0.34)",
+          fillOpacity: 0.18
+        }
+      }).addTo(state.map);
+    }
+
+    function renderLegend(categoryStats) {
+      elements.legendList.innerHTML = "";
+      if (!categoryStats.length) {
+        elements.legendMeta.textContent = "로드 전";
+        elements.legendList.innerHTML = `
+          <div class="empty-state">
+            데이터를 불러오면 인허가 종류별 색상과 건수가 여기에 표시됩니다.
+          </div>
+        `;
+        return;
+      }
+
+      elements.legendMeta.textContent = `${categoryStats.length}종류`;
+      const fragment = document.createDocumentFragment();
+
+      categoryStats.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "legend-item";
+        card.innerHTML = `
+          <span class="legend-swatch" style="--swatch:${escapeHtml(item.color)}"></span>
+          <span class="legend-label">${escapeHtml(item.label)}</span>
+          <span class="legend-value">${formatInteger(item.count)}건</span>
+        `;
+        fragment.appendChild(card);
+      });
+
+      elements.legendList.appendChild(fragment);
+    }
+
+    function renderSelectedParcel(feature, permits) {
+      if (!feature) {
+        state.selectedFocusPermitId = "";
+      }
+
+      const view = buildSelectedParcelView(feature, permits, state.selectedFocusPermitId);
+      applySelectedParcelView(view, {
+        meta: elements.selectedParcelMeta,
+        summary: elements.selectedParcelSummary,
+        list: elements.permitList
+      });
+      if (feature) {
+        ensureParcelBuildingRegisterData(feature);
+      }
+      return view;
+    }
+
+    function getParcelBuildingRegisterEntry(feature) {
+      const pnu = normalizeWhitespace(feature?.properties?.pnu || "");
+      return pnu ? state.buildingRegisterCache.get(pnu) || null : null;
+    }
+
+    function ensureParcelBuildingRegisterData(feature) {
+      const pnu = normalizeWhitespace(feature?.properties?.pnu || "");
+      if (!pnu) {
+        return Promise.resolve(null);
+      }
+
+      const cached = state.buildingRegisterCache.get(pnu);
+      if (cached?.status === "ready") {
+        return Promise.resolve(cached.data);
+      }
+      if (cached?.status === "loading") {
+        return cached.promise;
+      }
+
+      const promise = fetchParcelBuildingRegisterSummary(feature)
+        .then((data) => {
+          state.buildingRegisterCache.set(pnu, {
+            status: "ready",
+            data
+          });
+          rerenderSelectedParcelIfNeeded(pnu);
+          return data;
+        })
+        .catch((error) => {
+          console.error(error);
+          state.buildingRegisterCache.set(pnu, {
+            status: "error",
+            message: error instanceof Error ? error.message : "건축물대장 정보를 불러오지 못했습니다."
+          });
+          rerenderSelectedParcelIfNeeded(pnu);
+          return null;
+        });
+
+      state.buildingRegisterCache.set(pnu, {
+        status: "loading",
+        promise
+      });
+
+      return promise;
+    }
+
+    function rerenderSelectedParcelIfNeeded(pnu) {
+      if (normalizeWhitespace(state.selectedPnu || "") !== normalizeWhitespace(pnu || "")) {
+        return;
+      }
+
+      const feature = state.parcelFeatureIndex.get(pnu);
+      if (!feature) {
+        return;
+      }
+
+      const permits = (state.permitsByPnu.get(pnu) || []).slice().sort(comparePermits);
+      renderSelectedParcel(feature, permits);
+    }
+
+    async function fetchParcelBuildingRegisterSummary(feature) {
+      const requestParams = buildBuildingRegisterParamsFromFeature(feature);
+      if (!requestParams) {
+        throw new UserVisibleError("선택한 필지의 건축물대장 조회 파라미터를 만들지 못했습니다.", { tone: "warning" });
+      }
+
+      const [basisItems, recapItems, titleItems, jijiguItems] = await Promise.all([
+        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrBasisOulnInfo", requestParams, { pageSize: 50 }),
+        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo", requestParams, { pageSize: 50 }),
+        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo", requestParams, { pageSize: 50 }),
+        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo", requestParams, { pageSize: 100 })
+      ]);
+
+      return summarizeParcelBuildingRegister({
+        feature,
+        basisItems,
+        recapItems,
+        titleItems,
+        jijiguItems
+      });
+    }
+
+    function buildBuildingRegisterParamsFromFeature(feature) {
+      const digits = digitsOnly(feature?.properties?.pnu || "");
+      if (digits.length !== 19) {
+        return null;
+      }
+
+      return {
+        serviceKey: API_KEY_PUBLIC,
+        sigunguCd: digits.slice(0, 5),
+        bjdongCd: digits.slice(5, 10),
+        platGbCd: digits.slice(10, 11) === "2" ? "1" : "0",
+        bun: digits.slice(11, 15),
+        ji: digits.slice(15, 19),
+        _type: "json"
+      };
+    }
+
+    async function fetchAllApiItems(url, params, options = {}) {
+      const pageSize = Number.isFinite(options.pageSize) ? Math.max(1, options.pageSize) : 100;
+      const queryBase = {
+        ...params,
+        numOfRows: String(pageSize)
+      };
+      const firstPayload = await requestJson(url, new URLSearchParams({
+        ...queryBase,
+        pageNo: "1"
+      }));
+      const items = extractItems(firstPayload);
+      const totalCount = extractTotalCount(firstPayload);
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+        const payload = await requestJson(url, new URLSearchParams({
+          ...queryBase,
+          pageNo: String(pageNo)
+        }));
+        items.push(...extractItems(payload));
+      }
+
+      return items;
+    }
+
+    function summarizeParcelBuildingRegister(input = {}) {
+      const feature = input.feature || null;
+      const basisItems = Array.isArray(input.basisItems) ? input.basisItems : [];
+      const recapItems = Array.isArray(input.recapItems) ? input.recapItems : [];
+      const titleItems = Array.isArray(input.titleItems) ? input.titleItems : [];
+      const jijiguItems = Array.isArray(input.jijiguItems) ? input.jijiguItems : [];
+      const recapItem = recapItems[0] || null;
+      const primaryTitle = titleItems[0] || null;
+      const primaryBasis = basisItems[0] || null;
+
+      return {
+        roadAddress: firstNonEmptyString(
+          recapItem?.newPlatPlc,
+          primaryTitle?.newPlatPlc,
+          primaryBasis?.newPlatPlc
+        ),
+        detailItems: [
+          {
+            label: "대지면적",
+            value: formatSquareMeterValue(firstFiniteNumber(recapItem?.platArea, primaryTitle?.platArea, primaryBasis?.platArea))
+          },
+          {
+            label: "용도지역",
+            value: firstNonEmptyString(
+              findRepresentativeJijiguName(jijiguItems, "용도지역"),
+              recapItem?.jiyukCdNm,
+              primaryBasis?.jiyukCdNm
+            ) || "-"
+          },
+          {
+            label: "용도지구",
+            value: firstNonEmptyString(
+              findRepresentativeJijiguName(jijiguItems, "용도지구"),
+              recapItem?.jiguCdNm,
+              primaryBasis?.jiguCdNm
+            ) || "-"
+          },
+          {
+            label: "연면적",
+            value: formatSquareMeterValue(firstFiniteNumber(recapItem?.totArea, primaryTitle?.totArea))
+          },
+          {
+            label: "용적률",
+            value: formatPercentValue(firstFiniteNumber(recapItem?.vlRat, primaryTitle?.vlRat))
+          },
+          {
+            label: "주용도",
+            value: firstNonEmptyString(recapItem?.mainPurpsCdNm, primaryTitle?.mainPurpsCdNm) || "-"
+          },
+          {
+            label: "층수",
+            value: formatFloorSummary(titleItems)
+          },
+          {
+            label: "건축물 현황",
+            value: formatBuildingStatusSummary(recapItem, titleItems, primaryBasis, feature)
+          }
+        ]
+      };
+    }
+
+    function findRepresentativeJijiguName(items, keyword) {
+      if (!Array.isArray(items) || !keyword) {
+        return "";
+      }
+
+      const normalizedKeyword = normalizeWhitespace(keyword);
+      const candidates = items.filter((item) => normalizeWhitespace(item?.jijiguGbCdNm || "").includes(normalizedKeyword));
+      const representative = candidates.find((item) => normalizeWhitespace(item?.reprYn || "") === "1") || candidates[0];
+      return normalizeWhitespace(representative?.jijiguCdNm || representative?.etcJijigu || "");
+    }
+
+    function formatFloorSummary(titleItems) {
+      if (!Array.isArray(titleItems) || !titleItems.length) {
+        return "-";
+      }
+
+      const parts = Array.from(new Set(titleItems.map((item) => {
+        const buildingTypeLabel = formatBuildingTypeLabel(item);
+        const dongName = normalizeDongDisplayName(item);
+        const groundFloorCount = parseOptionalInteger(item?.grndFlrCnt);
+        const undergroundFloorCount = parseOptionalInteger(item?.ugrndFlrCnt);
+        const floorParts = [];
+        if (Number.isFinite(groundFloorCount) && groundFloorCount > 0) {
+          floorParts.push(`지상 ${formatInteger(groundFloorCount)}층`);
+        }
+        if (Number.isFinite(undergroundFloorCount) && undergroundFloorCount > 0) {
+          floorParts.push(`지하 ${formatInteger(undergroundFloorCount)}층`);
+        }
+        if (!floorParts.length) {
+          return [buildingTypeLabel, dongName].filter(Boolean).join(" : ");
+        }
+        const detailLabel = [dongName, floorParts.join(" / ")].filter(Boolean).join(" ");
+        return buildingTypeLabel
+          ? [buildingTypeLabel, detailLabel].filter(Boolean).join(" : ")
+          : detailLabel;
+      }).filter(Boolean)));
+
+      return parts.length ? parts.join(", ") : "-";
+    }
+
+    function formatBuildingStatusSummary(recapItem, titleItems, basisItem, feature) {
+      const buildingName = firstNonEmptyString(
+        recapItem?.bldNm,
+        titleItems.find((item) => normalizeWhitespace(item?.bldNm || ""))?.bldNm,
+        basisItem?.bldNm,
+        feature?.properties?.addr
+      );
+      const registerKind = firstNonEmptyString(
+        titleItems.find((item) => normalizeWhitespace(item?.regstrKindCdNm || ""))?.regstrKindCdNm,
+        basisItem?.regstrKindCdNm
+      );
+      const dongNames = Array.from(new Set(titleItems.map((item) => normalizeWhitespace(item?.dongNm || "")).filter(Boolean)));
+      const mainBuildingCount = firstFiniteNumber(recapItem?.mainBldCnt, dongNames.length);
+      const countLabel = Number.isFinite(mainBuildingCount) && mainBuildingCount > 0
+        ? `총 ${formatInteger(mainBuildingCount)}동`
+        : "";
+
+      return [buildingName, registerKind, countLabel].filter(Boolean).join(" · ") || "-";
+    }
+
+    function formatBuildingTypeLabel(item) {
+      const dongName = normalizeWhitespace(item?.dongNm || "");
+      const source = dongName || firstNonEmptyString(item?.mainAtchGbCdNm);
+      if (!source.includes("건축물")) {
+        return "";
+      }
+      if (source.includes("주건축물")) {
+        return "주";
+      }
+      if (source.includes("부속건축물")) {
+        return "부속";
+      }
+      return "";
+    }
+
+    function normalizeDongDisplayName(item) {
+      const dongName = normalizeWhitespace(item?.dongNm || item?.bldNm || "");
+      if (!dongName) {
+        return "";
+      }
+      return dongName
+        .replace(/^주건축물/, "")
+        .replace(/^부속건축물/, "")
+        .trim();
+    }
+
+    function buildParcelDetailMarkup(items) {
+      if (!Array.isArray(items) || !items.length) {
+        return "";
+      }
+
+      return `
+        <div class="parcel-summary__details">
+          ${items.map((item) => `
+            <div class="parcel-summary__item">
+              <span class="parcel-summary__label">${escapeHtml(item.label || "-")}</span>
+              <span class="parcel-summary__value">${escapeHtml(item.value || "-")}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function buildSelectedParcelView(feature, permits, focusPermitId = "") {
+      if (!feature) {
+        return {
+          title: "필지 상세",
+          meta: "선택 없음",
+          summaryHtml: `
+            <h3>필지를 선택하세요</h3>
+            <p>지도 위 필지 외곽선이나 색상 점을 클릭하면 해당 필지의 건축·주택 인허가 목록을 확인할 수 있습니다.</p>
+          `,
+          permitListHtml: `
+            <div class="empty-state">
+              필지를 선택하면 인허가 카드가 여기에 표시됩니다.
+            </div>
+          `
+        };
+      }
+
+      const props = feature.properties || {};
+      const address = normalizeWhitespace(props.addr || "");
+      const displayAddress = address || normalizeWhitespace(props.jibun || props.pnu || "필지 정보 없음");
+      const parcelValue = normalizeWhitespace(props.jibun || "");
+      const parcelPrice = Number(props.jiga);
+      const safeDisplayAddress = address || normalizeWhitespace(props.jibun || props.pnu || "필지 정보 없음");
+      const buildingRegisterEntry = getParcelBuildingRegisterEntry(feature);
+      const buildingRegisterData = buildingRegisterEntry?.status === "ready" ? buildingRegisterEntry.data : null;
+      const roadAddress = normalizeWhitespace(buildingRegisterData?.roadAddress || "");
+      const detailMarkup = buildingRegisterData?.detailItems?.length
+        ? buildParcelDetailMarkup(buildingRegisterData.detailItems)
+        : "";
+      const loadingMessage = buildingRegisterEntry?.status === "loading"
+        ? `<p class="parcel-summary__pending">건축물대장 정보를 불러오는 중입니다.</p>`
+        : "";
+      const errorMessage = buildingRegisterEntry?.status === "error"
+        ? `<p class="parcel-summary__pending">${escapeHtml(buildingRegisterEntry.message || "건축물대장 정보를 불러오지 못했습니다.")}</p>`
+        : "";
+      const metaLabel = permits.length ? `${permits.length}건` : "인허가 없음";
+      const summaryHtml = `
+        <h3>${escapeHtml(safeDisplayAddress)}</h3>
+        ${roadAddress ? `<p>${escapeHtml(roadAddress)}</p>` : ""}
+        ${loadingMessage}
+        ${errorMessage}
+        ${detailMarkup}
+      `;
+
+      return {
+        title: displayAddress,
+        meta: permits.length ? `${permits.length}건` : "인허가 없음",
+        summaryHtml: `
+          <h3>${escapeHtml(displayAddress)}</h3>
+          <p>
+            ${parcelValue ? `지번 ${escapeHtml(parcelValue)} · ` : ""}
+            PNU ${escapeHtml(props.pnu || "-")}
+            ${Number.isFinite(parcelPrice) ? ` · 공시지가 ${formatInteger(parcelPrice)}원/㎡` : ""}
+          </p>
+        `,
+        title: safeDisplayAddress,
+        meta: metaLabel,
+        summaryHtml,
+        permitListHtml: buildPermitListMarkup(permits, focusPermitId)
+      };
+    }
+
+    function applySelectedParcelView(view, target) {
+      if (target.title) {
+        target.title.textContent = view.title;
+      }
+      if (target.meta) {
+        target.meta.textContent = view.meta;
+      }
+      if (target.summary) {
+        target.summary.innerHTML = view.summaryHtml;
+      }
+      if (target.list) {
+        target.list.innerHTML = view.permitListHtml;
+      }
+    }
+
+    function buildPermitListMarkup(permits, focusPermitId = "") {
+      if (!permits.length) {
+        return `
+          <div class="empty-state">
+            선택한 필지에는 현재 조회된 건축·주택 인허가가 없습니다.
+          </div>
+        `;
+      }
+
+      return permits.map((permit) => buildPermitCardMarkup(permit, focusPermitId)).join("");
+    }
+
+    function buildPermitCardMarkup(permit, focusPermitId = "") {
+      const chips = [];
+      if (permit.permitDateLabel) {
+        chips.push(`<span class="chip"><strong>${escapeHtml(permit.permitDateFieldLabel)}</strong> ${escapeHtml(permit.permitDateLabel)}</span>`);
+      }
+      if (permit.purposeName) {
+        chips.push(`<span class="chip"><strong>용도</strong> ${escapeHtml(permit.purposeName)}</span>`);
+      }
+      if (permit.buildingName) {
+        chips.push(`<span class="chip"><strong>건물명</strong> ${escapeHtml(permit.buildingName)}</span>`);
+      }
+      if (Number.isFinite(permit.landArea)) {
+        chips.push(`<span class="chip"><strong>대지</strong> ${formatArea(permit.landArea)}㎡</span>`);
+      }
+      if (Number.isFinite(permit.totalArea)) {
+        chips.push(`<span class="chip"><strong>연면적</strong> ${formatArea(permit.totalArea)}㎡</span>`);
+      }
+      if (Number.isFinite(permit.buildingArea)) {
+        chips.push(`<span class="chip"><strong>건축면적</strong> ${formatArea(permit.buildingArea)}㎡</span>`);
+      }
+      if (Number.isFinite(permit.householdCount)) {
+        chips.push(`<span class="chip"><strong>세대수</strong> ${formatInteger(permit.householdCount)}</span>`);
+      }
+      if (Number.isFinite(permit.mainBuildingCount)) {
+        chips.push(`<span class="chip"><strong>주동수</strong> ${formatInteger(permit.mainBuildingCount)}</span>`);
+      }
+
+      const emphasisStyle = focusPermitId && focusPermitId === permit.id
+        ? ` style="border-color: rgba(192, 93, 53, 0.28); box-shadow: 0 12px 28px rgba(145, 63, 31, 0.08);"`
+        : "";
+
+      return `
+        <div class="permit-card"${emphasisStyle}>
+          <div class="permit-card__head">
+            <span class="permit-card__icon" style="--swatch:${escapeHtml(getCategoryColor(permit.categoryLabel))}"></span>
+            <div>
+              <h3 class="permit-card__title">${escapeHtml(permit.categoryLabel)}</h3>
+              <p class="permit-card__subtitle">
+                ${escapeHtml(permit.sourceLabel)}
+                ${permit.address ? ` · ${escapeHtml(permit.address)}` : ""}
+              </p>
+            </div>
+          </div>
+          ${chips.length ? `<div class="chip-list">${chips.join("")}</div>` : ""}
+        </div>
+      `;
+    }
+
+    function buildCategoryStats(permits) {
+      const stats = new Map();
+      permits.forEach((permit) => {
+        const key = permit.categoryLabel;
+        const entry = stats.get(key) || {
+          label: key,
+          count: 0,
+          source: permit.source
+        };
+        entry.count += 1;
+        stats.set(key, entry);
+      });
+
+      return Array.from(stats.values())
+        .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, "ko"))
+        .map((entry) => ({
+          ...entry,
+          color: getPreferredCategoryColor(entry.label, entry.source)
+        }));
+    }
+
+    function buildCategoryColorMap(categoryStats) {
+      return new Map(categoryStats.map((item) => [item.label, item.color]));
+    }
+
+    function getCategoryColor(label) {
+      return state.categoryColors.get(label) || getPreferredCategoryColor(label, label.startsWith("주택") ? "housing" : "arch");
+    }
+
+    function getPreferredCategoryColor(label, source) {
+      if (source === "arch") {
+        if (label.includes("신축")) return "#d94841";
+        if (label.includes("증축")) return "#f08c00";
+        if (label.includes("개축")) return "#8e5cf6";
+        if (label.includes("재축")) return "#7048e8";
+        if (label.includes("대수선")) return "#1c7ed6";
+        if (label.includes("용도변경")) return "#0b7285";
+        if (label.includes("철거") || label.includes("멸실")) return "#495057";
+        return "#c05d35";
+      }
+      if (label.includes("공동주택")) return "#2b8a3e";
+      if (label.includes("단독주택")) return "#1f7a8c";
+      if (label.includes("기본")) return "#2f7d54";
+      return "#5c940d";
+    }
+
+    function updateStats(nextValues = {}) {
+      if (Number.isFinite(nextValues.parcelCount)) {
+        elements.parcelCount.textContent = formatInteger(nextValues.parcelCount);
+      }
+      if (Number.isFinite(nextValues.permitCount)) {
+        elements.permitCount.textContent = formatInteger(nextValues.permitCount);
+      }
+      if (Number.isFinite(nextValues.mappedPermitCount)) {
+        elements.mappedPermitCount.textContent = formatInteger(nextValues.mappedPermitCount);
+      }
+      if (Number.isFinite(nextValues.selectedPermitCount)) {
+        elements.selectedPermitCount.textContent = formatInteger(nextValues.selectedPermitCount);
+      }
+    }
+
+    function clearSelectedParcelState() {
+      state.selectedPnu = null;
+      state.selectedFocusPermitId = "";
+      renderSelectedParcel(null, []);
+      updateStats({
+        selectedPermitCount: 0
+      });
+
+      if (state.map && state.selectedLayer) {
+        state.map.removeLayer(state.selectedLayer);
+        state.selectedLayer = null;
+      }
+    }
+
+    function clearLoadedData() {
+      state.permits = [];
+      state.permitsByPnu = new Map();
+      state.categoryStats = [];
+      state.categoryColors = new Map();
+      state.parcelFeatures = [];
+      state.parcelFeatureIndex = new Map();
+      state.permitMarkersVisible = false;
+      state.selectedPnu = null;
+      state.selectedFocusPermitId = "";
+      state.loadedRegionKey = "";
+
+      if (state.map) {
+        if (state.parcelLayer) {
+          state.map.removeLayer(state.parcelLayer);
+          state.parcelLayer = null;
+        }
+        if (state.permitMarkersLayer) {
+          state.map.removeLayer(state.permitMarkersLayer);
+          state.permitMarkersLayer = null;
+        }
+        if (state.selectedLayer) {
+          state.map.removeLayer(state.selectedLayer);
+          state.selectedLayer = null;
+        }
+      }
+
+      updateStats({
+        parcelCount: 0,
+        permitCount: 0,
+        mappedPermitCount: 0,
+        selectedPermitCount: 0
+      });
+      updatePermitVisibilityHint();
+    }
+
+    async function requestJson(url, params) {
+      const target = `${url}?${params.toString()}`;
+      const response = await fetch(target, {
+        method: "GET"
+      });
+
+      if (!response.ok) {
+        throw new UserVisibleError(`API 오류 [${response.status}]`, { tone: "error" });
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        throw new UserVisibleError("JSON 응답을 해석하지 못했습니다.", { tone: "error" });
+      }
+
+      const resultCode = payload?.response?.header?.resultCode || payload?.header?.resultCode;
+      if (resultCode && resultCode !== "00" && resultCode !== "INFO-000") {
+        const resultMsg = payload?.response?.header?.resultMsg || payload?.header?.resultMsg || "API 응답 오류";
+        throw new UserVisibleError(`${resultMsg} (${resultCode})`, { tone: "error" });
+      }
+
+      return payload;
+    }
+
+    function requestJsonp(url, params) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `__jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const query = new URLSearchParams({
+          ...params,
+          callback: callbackName
+        });
+        const script = document.createElement("script");
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("JSONP 요청 시간이 초과되었습니다."));
+        }, 30000);
+
+        function cleanup() {
+          window.clearTimeout(timeout);
+          delete window[callbackName];
+          if (script.parentNode) {
+            script.parentNode.removeChild(script);
+          }
+        }
+
+        window[callbackName] = (payload) => {
+          cleanup();
+          resolve(payload);
+        };
+
+        script.onerror = () => {
+          cleanup();
+          reject(new Error("JSONP 스크립트를 불러오지 못했습니다."));
+        };
+        script.src = `${url}?${query.toString()}`;
+        document.head.appendChild(script);
+      });
+    }
+
+    function extractItems(payload) {
+      const candidates = [
+        payload?.response?.body?.items?.item,
+        payload?.response?.body?.items,
+        payload?.body?.items?.item,
+        payload?.body?.items,
+        payload?.items?.item,
+        payload?.items,
+        payload?.item
+      ];
+
+      for (const candidate of candidates) {
+        if (Array.isArray(candidate)) {
+          return candidate;
+        }
+        if (candidate && typeof candidate === "object") {
+          return [candidate];
+        }
+      }
+
+      return [];
+    }
+
+    function extractTotalCount(payload) {
+      const rawValue =
+        payload?.response?.body?.totalCount ??
+        payload?.body?.totalCount ??
+        payload?.totalCount ??
+        0;
+      const parsed = Number(rawValue);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function extractParcelFeatures(payload) {
+      const features = payload?.response?.result?.featureCollection?.features;
+      return Array.isArray(features) ? features : [];
+    }
+
+    function handleLoadError(error) {
+      if (error instanceof UserVisibleError) {
+        updateStatus(error.message, error.tone || "error", "중단");
+        return;
+      }
+
+      const looksLikeNetwork =
+        error instanceof TypeError ||
+        (typeof error.message === "string" && /cors|failed to fetch|network|api 오류 \[404\]/i.test(error.message));
+
+      if (looksLikeNetwork) {
+        updateStatus(
+          "브라우저에서 외부 API를 직접 불러오지 못했습니다. 인터넷 연결과 API 키 제한 상태를 확인한 뒤 다시 시도해주세요.",
+          "error",
+          "중단"
+        );
+        addWarning("이 페이지는 별도 서버 없이 공공데이터 API와 VWorld 데이터를 브라우저에서 직접 호출하도록 구성되어 있습니다.");
+        return;
+      }
+
+      updateStatus(`조회 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`, "error", "중단");
+    }
+
+    function setButtonLoading(loading) {
+      elements.submitButton.disabled = loading;
+      elements.submitButton.classList.toggle("is-loading", loading);
+      elements.buttonLabel.textContent = loading ? "불러오는 중..." : "주소 검색";
+    }
+
+    function setMapLoadingProgress(message, percent) {
+      if (!elements.mapLoadOverlay || !elements.mapLoadLabel || !elements.mapLoadValue || !elements.mapLoadFill) {
+        return;
+      }
+
+      if (state.mapLoadHideTimer) {
+        window.clearTimeout(state.mapLoadHideTimer);
+        state.mapLoadHideTimer = 0;
+      }
+
+      const normalizedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+      elements.mapLoadOverlay.hidden = false;
+      elements.mapLoadOverlay.classList.add("is-visible");
+      elements.mapLoadLabel.textContent = message;
+      elements.mapLoadValue.textContent = `${String(normalizedPercent).padStart(2, "0")}%`;
+      elements.mapLoadFill.style.width = `${normalizedPercent}%`;
+    }
+
+    function hideMapLoadingProgress(options = {}) {
+      if (!elements.mapLoadOverlay) {
+        return;
+      }
+
+      if (state.mapLoadHideTimer) {
+        window.clearTimeout(state.mapLoadHideTimer);
+        state.mapLoadHideTimer = 0;
+      }
+
+      const delay = Number.isFinite(options.delay) ? Math.max(0, options.delay) : 0;
+      const hide = () => {
+        elements.mapLoadOverlay.classList.remove("is-visible");
+        elements.mapLoadOverlay.hidden = true;
+      };
+
+      if (delay > 0) {
+        state.mapLoadHideTimer = window.setTimeout(() => {
+          state.mapLoadHideTimer = 0;
+          hide();
+        }, delay);
+        return;
+      }
+
+      hide();
+    }
+
+    function updateStatus(message, tone = "idle", meta = "대기 중") {
+      elements.statusCard.dataset.tone = tone;
+      elements.statusText.textContent = message;
+      elements.statusMeta.textContent = meta;
+    }
+
+    function setMapSummary(title, description) {
+      elements.mapSummary.innerHTML = `
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(description)}</p>
+      `;
+    }
+
+    function showMapFallback(message) {
+      elements.mapFallback.textContent = message;
+      elements.mapFallback.classList.add("is-visible");
+      setMapSummary("지도 연결 필요", message);
+    }
+
+    function handleMapZoomChange() {
+      updatePermitVisibility();
+      queueAutoLoadForMapViewport({
+        trigger: "zoom",
+        fitBounds: false
+      });
+    }
+
+    function handleMapMoveEnd() {
+      queueAutoLoadForMapViewport({
+        trigger: "move",
+        fitBounds: false
+      });
+    }
+
+    function updatePermitVisibility() {
+      if (!state.map) {
+        return;
+      }
+
+      const canShow = Boolean(state.permitMarkersLayer) && state.permits.length > 0 && state.map.getZoom() >= PERMIT_VISIBLE_MIN_ZOOM;
+      if (state.permitMarkersLayer) {
+        const hasLayer = state.map.hasLayer(state.permitMarkersLayer);
+        if (canShow && !hasLayer) {
+          state.permitMarkersLayer.addTo(state.map);
+        }
+        if (!canShow && hasLayer) {
+          state.map.removeLayer(state.permitMarkersLayer);
+        }
+      }
+
+      state.permitMarkersVisible = canShow;
+      updatePermitVisibilityHint();
+    }
+
+    function updatePermitVisibilityHint() {
+      if (!elements.zoomHint) {
+        return;
+      }
+
+      if (!state.map || !state.permits.length) {
+        elements.zoomHint.dataset.tone = "idle";
+        elements.zoomHint.textContent = `인허가 색상 원은 데이터를 불러온 뒤 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 표시됩니다.`;
+        return;
+      }
+
+      const currentZoom = Math.round(state.map.getZoom());
+      if (state.permitMarkersVisible) {
+        elements.zoomHint.dataset.tone = "visible";
+        elements.zoomHint.textContent = `현재 줌 ${currentZoom} · 인허가 색상 원 표시 중`;
+        return;
+      }
+
+      elements.zoomHint.dataset.tone = "hidden";
+      elements.zoomHint.textContent = `현재 줌 ${currentZoom} · 색상 원은 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 표시됩니다.`;
+    }
+
+    function handleSidebarToggleClick() {
+      if (state.isSidebarOpen) {
+        closeSidebar();
+        return;
+      }
+      openSidebar();
+    }
+
+    function handleDocumentKeydown(event) {
+      if (event.key === "Escape" && state.isSidebarOpen) {
+        closeSidebar();
+      }
+    }
+
+    function openSidebar(options = {}) {
+      if (!elements.sidebar) {
+        return;
+      }
+
+      const { focus = true } = options;
+      if (!state.isSidebarOpen) {
+        state.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      }
+
+      state.isSidebarOpen = true;
+      elements.sidebar.classList.add("is-open");
+      elements.sidebar.setAttribute("aria-hidden", "false");
+      elements.sidebarBackdrop.hidden = false;
+      document.body.classList.add("sidebar-open");
+      elements.sidebarToggle?.setAttribute("aria-expanded", "true");
+
+      if (focus) {
+        elements.sidebarClose?.focus({ preventScroll: true });
+      }
+    }
+
+    function closeSidebar(options = {}) {
+      if (!elements.sidebar || !state.isSidebarOpen) {
+        return;
+      }
+
+      const { restoreFocus = true } = options;
+      state.isSidebarOpen = false;
+      elements.sidebar.classList.remove("is-open");
+      elements.sidebar.setAttribute("aria-hidden", "false");
+      elements.sidebarBackdrop.hidden = true;
+      document.body.classList.remove("sidebar-open");
+      elements.sidebarToggle?.setAttribute("aria-expanded", "false");
+
+      if (restoreFocus && state.lastFocusedElement?.focus) {
+        state.lastFocusedElement.focus({ preventScroll: true });
+      }
+      state.lastFocusedElement = null;
+    }
+
+    function addWarning(message) {
+      const item = document.createElement("li");
+      item.className = "warning-item";
+      item.textContent = message;
+      elements.warningList.appendChild(item);
+      elements.warningList.classList.add("has-items");
+    }
+
+    function clearWarnings() {
+      elements.warningList.innerHTML = "";
+      elements.warningList.classList.remove("has-items");
+    }
+
+    function comparePermits(left, right) {
+      return (
+        compareDateDesc(left.permitDate, right.permitDate) ||
+        left.categoryLabel.localeCompare(right.categoryLabel, "ko") ||
+        left.id.localeCompare(right.id, "en")
+      );
+    }
+
+    function compareDateDesc(left, right) {
+      const leftValue = digitsOnly(left);
+      const rightValue = digitsOnly(right);
+      if (leftValue && rightValue) {
+        return rightValue.localeCompare(leftValue);
+      }
+      if (rightValue) {
+        return 1;
+      }
+      if (leftValue) {
+        return -1;
+      }
+      return 0;
+    }
+
+    function isRecentPermitDate(value) {
+      const digits = digitsOnly(value);
+      if (digits.length !== 8) {
+        return false;
+      }
+      return digits >= RECENT_PERMIT_CUTOFF_DIGITS && digits <= RECENT_PERMIT_REFERENCE_DIGITS;
+    }
+
+    function doesFeatureIntersectViewport(feature, bounds) {
+      if (!feature?.geometry || !bounds) {
+        return false;
+      }
+
+      let geometryBounds = feature.properties?.__bbox;
+      if (!geometryBounds) {
+        geometryBounds = getGeometryBounds(feature.geometry);
+        if (feature.properties) {
+          feature.properties.__bbox = geometryBounds;
+        }
+      }
+      return !(
+        geometryBounds.maxLng < bounds.getWest()
+        || geometryBounds.minLng > bounds.getEast()
+        || geometryBounds.maxLat < bounds.getSouth()
+        || geometryBounds.minLat > bounds.getNorth()
+      );
+    }
+
+    function extractPrimaryPolygon(geometry) {
+      if (!geometry) {
+        return [];
+      }
+      if (geometry.type === "Polygon") {
+        return Array.isArray(geometry.coordinates?.[0]) ? geometry.coordinates[0] : [];
+      }
+      if (geometry.type === "MultiPolygon") {
+        const polygons = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+        let best = [];
+        let bestArea = 0;
+        polygons.forEach((polygon) => {
+          const ring = Array.isArray(polygon?.[0]) ? polygon[0] : [];
+          const area = Math.abs(computeSignedArea(ring));
+          if (area > bestArea) {
+            best = ring;
+            bestArea = area;
+          }
+        });
+        return best;
+      }
+      return [];
+    }
+
+    function getGeometryBounds(geometry) {
+      const coordinates = flattenGeometryCoordinates(geometry);
+      let minLng = Infinity;
+      let maxLng = -Infinity;
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+
+      coordinates.forEach((point) => {
+        const lng = Number(point[0]);
+        const lat = Number(point[1]);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+          return;
+        }
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      });
+
+      if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) {
+        return {
+          minLng: 0,
+          maxLng: 0,
+          minLat: 0,
+          maxLat: 0
+        };
+      }
+
+      return { minLng, maxLng, minLat, maxLat };
+    }
+
+    function flattenGeometryCoordinates(geometry) {
+      if (!geometry) {
+        return [];
+      }
+      if (geometry.type === "Polygon") {
+        return geometry.coordinates.flat(1);
+      }
+      if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates.flat(2);
+      }
+      return [];
+    }
+
+    function computePolygonCentroid(ring) {
+      if (!Array.isArray(ring) || ring.length < 3) {
+        return null;
+      }
+
+      let area = 0;
+      let centroidLng = 0;
+      let centroidLat = 0;
+
+      for (let i = 0; i < ring.length; i += 1) {
+        const current = ring[i];
+        const next = ring[(i + 1) % ring.length];
+        const cross = current[0] * next[1] - next[0] * current[1];
+        area += cross;
+        centroidLng += (current[0] + next[0]) * cross;
+        centroidLat += (current[1] + next[1]) * cross;
+      }
+
+      if (Math.abs(area) < 1e-12) {
+        const avgLng = ring.reduce((sum, point) => sum + Number(point[0] || 0), 0) / ring.length;
+        const avgLat = ring.reduce((sum, point) => sum + Number(point[1] || 0), 0) / ring.length;
+        return [avgLng, avgLat];
+      }
+
+      const factor = 1 / (3 * area);
+      return [centroidLng * factor, centroidLat * factor];
+    }
+
+    function computeSignedArea(ring) {
+      if (!Array.isArray(ring) || ring.length < 3) {
+        return 0;
+      }
+      let area = 0;
+      for (let i = 0; i < ring.length; i += 1) {
+        const current = ring[i];
+        const next = ring[(i + 1) % ring.length];
+        area += current[0] * next[1] - next[0] * current[1];
+      }
+      return area / 2;
+    }
+
+    function ensurePointInsideGeometry(point, geometry) {
+      if (!Array.isArray(point) || point.length < 2) {
+        return null;
+      }
+      if (isPointInsideGeometry(point, geometry)) {
+        return point;
+      }
+
+      const bounds = getGeometryBounds(geometry);
+      const fallbackCandidates = [
+        [(bounds.minLng + bounds.maxLng) / 2, (bounds.minLat + bounds.maxLat) / 2],
+        extractPrimaryPolygon(geometry)[0]
+      ];
+
+      for (const candidate of fallbackCandidates) {
+        if (Array.isArray(candidate) && isPointInsideGeometry(candidate, geometry)) {
+          return candidate;
+        }
+      }
+
+      return null;
+    }
+
+    function isPointInsideGeometry(point, geometry) {
+      if (!geometry) {
+        return false;
+      }
+      if (geometry.type === "Polygon") {
+        return isPointInsidePolygon(point, geometry.coordinates);
+      }
+      if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates.some((polygon) => isPointInsidePolygon(point, polygon));
+      }
+      return false;
+    }
+
+    function isPointInsidePolygon(point, polygonCoordinates) {
+      if (!Array.isArray(polygonCoordinates) || !polygonCoordinates.length) {
+        return false;
+      }
+
+      const [outerRing, ...holes] = polygonCoordinates;
+      if (!isPointInRing(point, outerRing)) {
+        return false;
+      }
+
+      return !holes.some((ring) => isPointInRing(point, ring));
+    }
+
+    function isPointInRing(point, ring) {
+      if (!Array.isArray(ring) || ring.length < 3) {
+        return false;
+      }
+
+      const x = Number(point[0]);
+      const y = Number(point[1]);
+      let inside = false;
+
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+        const xi = Number(ring[i][0]);
+        const yi = Number(ring[i][1]);
+        const xj = Number(ring[j][0]);
+        const yj = Number(ring[j][1]);
+
+        const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || Number.EPSILON) + xi;
+        if (intersects) {
+          inside = !inside;
+        }
+      }
+
+      return inside;
+    }
+
+    function normalizeSido(value) {
+      const trimmed = normalizeWhitespace(value);
+      return SIDO_MAP[trimmed] || trimmed;
+    }
+
+    function normalizeWhitespace(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function digitsOnly(value) {
+      return String(value || "").replace(/\D/g, "");
+    }
+
+    function getYearsAgoDate(referenceDate, years) {
+      const value = referenceDate instanceof Date ? new Date(referenceDate.getTime()) : new Date();
+      value.setFullYear(value.getFullYear() - Number(years || 0));
+      return value;
+    }
+
+    function formatDateDigitsFromDate(value) {
+      if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+        return "";
+      }
+      const year = String(value.getFullYear()).padStart(4, "0");
+      const month = String(value.getMonth() + 1).padStart(2, "0");
+      const day = String(value.getDate()).padStart(2, "0");
+      return `${year}${month}${day}`;
+    }
+
+    function parseOptionalNumber(value) {
+      if (value === null || value === undefined || value === "") {
+        return Number.NaN;
+      }
+      const parsed = Number(String(value).replace(/,/g, ""));
+      return Number.isFinite(parsed) ? parsed : Number.NaN;
+    }
+
+    function parseOptionalInteger(value) {
+      const parsed = parseOptionalNumber(value);
+      return Number.isFinite(parsed) ? Math.round(parsed) : Number.NaN;
+    }
+
+    function formatDateLabel(value) {
+      const digits = digitsOnly(value);
+      if (digits.length !== 8) {
+        return "";
+      }
+      return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    }
+
+    function formatArea(value) {
+      if (!Number.isFinite(value)) {
+        return "-";
+      }
+      return Number(value).toLocaleString("ko-KR", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+      });
+    }
+
+    function formatSquareMeterValue(value) {
+      if (!Number.isFinite(value)) {
+        return "-";
+      }
+      return `${formatArea(value)}㎡`;
+    }
+
+    function formatPercentValue(value) {
+      if (!Number.isFinite(value)) {
+        return "-";
+      }
+      return `${formatArea(value)}%`;
+    }
+
+    function firstNonEmptyString(...values) {
+      for (const value of values) {
+        const normalized = normalizeWhitespace(value || "");
+        if (normalized) {
+          return normalized;
+        }
+      }
+      return "";
+    }
+
+    function firstFiniteNumber(...values) {
+      for (const value of values) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+      return NaN;
+    }
+
+    function formatInteger(value) {
+      if (!Number.isFinite(value)) {
+        return "0";
+      }
+      return Number(value).toLocaleString("ko-KR");
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+  </script>
+</body>
+</html>
