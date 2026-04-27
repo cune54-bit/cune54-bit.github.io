@@ -1325,6 +1325,7 @@
     const RECENT_PERMIT_REFERENCE_DIGITS = formatDateDigitsFromDate(RECENT_PERMIT_REFERENCE_DATE);
     const RECENT_PERMIT_CUTOFF_DIGITS = formatDateDigitsFromDate(getYearsAgoDate(RECENT_PERMIT_REFERENCE_DATE, RECENT_PERMIT_LOOKBACK_YEARS));
     const ARCH_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo";
+    const ARCH_TMP_BUILDING_ENDPOINT = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApTmpBldInfo";
     const HOUSING_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/HsPmsHubService/getHpBasisOulnInfo";
     const VWORLD_DATA_ENDPOINT = "https://api.vworld.kr/req/data";
     const VWORLD_ADDRESS_ENDPOINT = "https://api.vworld.kr/req/address";
@@ -2439,6 +2440,17 @@
         onProgress: reporter,
         silent: options.silent === true
       });
+      let enrichedPermits = permits;
+      const loadScope = normalizeWhitespace(options.loadScope || "all") || "all";
+      if (loadScope === "all" || loadScope === "arch") {
+        reporter?.("媛?ㅻ찓嫄댁텞臾??곸꽭瑜??뺤씤?섎뒗 以묒엯?덈떎.", 70, "?곸꽭");
+        try {
+          const temporaryBuildingRecords = await fetchAllTemporaryBuildingRecords(region);
+          enrichedPermits = enrichPermitsWithTemporaryBuildingDetails(permits, temporaryBuildingRecords);
+        } catch (error) {
+          console.error(error);
+        }
+      }
       reporter?.("연속지적도 필지를 확인하는 중입니다.", 72, "필지");
       const parcelFeatures = await fetchParcelFeatures(region, {
         onProgress: reporter,
@@ -2446,12 +2458,12 @@
       });
       reporter?.("지도 표시용 데이터를 정리하는 중입니다.", 96, "정리", "지도에 표시할 정보 정리 중");
 
-      const normalized = hydratePermitPlacement(parcelFeatures, permits);
+      const normalized = hydratePermitPlacement(parcelFeatures, enrichedPermits);
       return {
         regionCode: region.regionCode,
         regionLabel: region.regionLabel,
-        permitCount: permits.length,
-        missingPnuCount: permits.filter((item) => !item.pnu).length,
+        permitCount: enrichedPermits.length,
+        missingPnuCount: enrichedPermits.filter((item) => !item.pnu).length,
         unmatchedPermitCount: normalized.unmatchedPermitCount,
         parcelFeatures: normalized.parcelFeatures,
         parcelFeatureIndex: normalized.parcelFeatureIndex,
@@ -2764,6 +2776,43 @@
       return requestJson(endpoint, params);
     }
 
+    async function fetchAllTemporaryBuildingRecords(region) {
+      const items = await fetchRegionApiItems(ARCH_TMP_BUILDING_ENDPOINT, region, PERMIT_PAGE_SIZE);
+      return Array.isArray(items) ? items : [];
+    }
+
+    async function fetchRegionApiItems(endpoint, region, pageSize = PERMIT_PAGE_SIZE) {
+      if (!endpoint || !region?.sigunguCd || !region?.bjdongCd) {
+        return [];
+      }
+
+      const queryBase = {
+        serviceKey: API_KEY_PUBLIC,
+        sigunguCd: region.sigunguCd,
+        bjdongCd: region.bjdongCd,
+        _type: "json",
+        numOfRows: String(pageSize)
+      };
+
+      const firstPayload = await requestJson(endpoint, new URLSearchParams({
+        ...queryBase,
+        pageNo: "1"
+      }));
+      const items = extractItems(firstPayload);
+      const totalCount = extractTotalCount(firstPayload);
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+        const payload = await requestJson(endpoint, new URLSearchParams({
+          ...queryBase,
+          pageNo: String(pageNo)
+        }));
+        items.push(...extractItems(payload));
+      }
+
+      return items;
+    }
+
     async function fetchParcelFeatures(region, options = {}) {
       const requestParcelPage = (page) => requestJsonp(VWORLD_DATA_ENDPOINT, {
         service: "data",
@@ -2878,6 +2927,7 @@
         permitDateFieldLabel,
         address: normalizeWhitespace(item.platPlc || ""),
         pnu: buildPnuFromPermitItem(item),
+        detailTypeLabel: "",
         buildingName: normalizeWhitespace(item.bldNm || ""),
         purposeName,
         landArea: parseOptionalNumber(item.platArea),
@@ -2890,13 +2940,42 @@
     }
 
     function buildPermitId(item, source) {
-      const mgmKey = source === "arch"
+      const mgmKey = buildPermitMgmtKey(item, source);
+      const dateKey = source === "arch"
+        ? digitsOnly(item.archPmsDay || item.useAprDay || item.realStcnsDay)
+        : digitsOnly(item.apprvDay || item.stcnsDay || item.useInsptDay || item.useInsptSchedDay);
+      const typeKey = source === "arch"
+        ? normalizeWhitespace(item.archGbCdNm || item.archGbCd || "")
+        : normalizeWhitespace(item.purpsCdNm || item.demolExtngGbCdNm || "");
+      const purposeKey = source === "arch"
+        ? normalizeWhitespace(item.mainPurpsCdNm || "")
+        : normalizeWhitespace(item.purpsCdNm || "");
+      const areaKey = [
+        normalizeWhitespace(item.platArea || ""),
+        normalizeWhitespace(item.archArea || ""),
+        normalizeWhitespace(item.totArea || "")
+      ].join(":");
+      const locationKey = [
+        digitsOnly(item.sigunguCd || ""),
+        digitsOnly(item.bjdongCd || ""),
+        digitsOnly(item.bun || "").padStart(4, "0").slice(-4),
+        digitsOnly(item.ji || "").padStart(4, "0").slice(-4)
+      ].join(":");
+      return [
+        source,
+        mgmKey || normalizeWhitespace(item.platPlc || "unknown"),
+        dateKey || "nodate",
+        locationKey || "nolocation",
+        typeKey || "notype",
+        purposeKey || "nopurpose",
+        areaKey || "noarea"
+      ].join(":");
+    }
+
+    function buildPermitMgmtKey(item, source) {
+      return source === "arch"
         ? normalizeWhitespace(item.mgmPmsrgstPk || "")
         : normalizeWhitespace(item.mgmHsrgstPk || "");
-      if (mgmKey) {
-        return `${source}:${mgmKey}`;
-      }
-      return `${source}:${normalizeWhitespace(item.platPlc || "unknown")}:${item.rnum || Math.random().toString(16).slice(2)}`;
     }
 
     function buildPnuFromPermitItem(item) {
@@ -2930,6 +3009,58 @@
         }
       });
       return Array.from(deduped.values()).sort(comparePermits);
+    }
+
+    function enrichPermitsWithTemporaryBuildingDetails(permits, temporaryBuildingRecords) {
+      if (!Array.isArray(permits) || !permits.length || !Array.isArray(temporaryBuildingRecords) || !temporaryBuildingRecords.length) {
+        return permits;
+      }
+
+      const summaryByKey = new Map();
+      temporaryBuildingRecords.forEach((item) => {
+        const mgmKey = buildPermitMgmtKey(item, "arch");
+        const key = mgmKey || [
+          buildPnuFromPermitItem(item),
+          digitsOnly(item.crtnDay || ""),
+          normalizeWhitespace(item.sumArchArea || item.archArea || ""),
+          normalizeWhitespace(item.sumTotArea || item.totArea || "")
+        ].join(":");
+        if (!key) {
+          return;
+        }
+
+        const summary = summaryByKey.get(key) || {
+          purposeName: "",
+          rowCount: 0
+        };
+        summary.rowCount += 1;
+        summary.purposeName = summary.purposeName || normalizeWhitespace(item.mainPurpsCdNm || "");
+        summaryByKey.set(key, summary);
+      });
+
+      return permits.map((permit) => {
+        if (permit?.source !== "arch") {
+          return permit;
+        }
+
+        const mgmKey = buildPermitMgmtKey(permit.raw, permit.source);
+        const fallbackKey = [
+          permit.pnu,
+          permit.permitDate,
+          normalizeWhitespace(permit.buildingArea || ""),
+          normalizeWhitespace(permit.totalArea || "")
+        ].join(":");
+        const summary = (mgmKey && summaryByKey.get(mgmKey)) || summaryByKey.get(fallbackKey);
+        if (!summary) {
+          return permit;
+        }
+
+        return {
+          ...permit,
+          detailTypeLabel: permit.detailTypeLabel || "가설건축물 축조 신고",
+          purposeName: permit.purposeName || summary.purposeName || permit.purposeName
+        };
+      });
     }
 
     function dedupeParcelFeatures(features) {
@@ -3647,6 +3778,10 @@
         chips.push(`<span class="chip"><strong>주동수</strong> ${formatInteger(permit.mainBuildingCount)}</span>`);
       }
 
+      const displayTitle = permit.detailTypeLabel
+        ? `${permit.categoryLabel} (${permit.detailTypeLabel})`
+        : permit.categoryLabel;
+
       const emphasisStyle = focusPermitId && focusPermitId === permit.id
         ? ` style="border-color: rgba(192, 93, 53, 0.28); box-shadow: 0 12px 28px rgba(145, 63, 31, 0.08);"`
         : "";
@@ -3656,7 +3791,7 @@
           <div class="permit-card__head">
             <span class="permit-card__icon" style="--swatch:${escapeHtml(getCategoryColor(permit.categoryLabel))}"></span>
             <div>
-              <h3 class="permit-card__title">${escapeHtml(permit.categoryLabel)}</h3>
+              <h3 class="permit-card__title">${escapeHtml(displayTitle)}</h3>
               <p class="permit-card__subtitle">
                 ${escapeHtml(permit.sourceLabel)}
                 ${permit.address ? ` · ${escapeHtml(permit.address)}` : ""}
@@ -3791,7 +3926,8 @@
 
       let payload;
       try {
-        payload = await response.json();
+        const responseText = await response.text();
+        payload = parseJsonResponseText(responseText);
       } catch (error) {
         throw new UserVisibleError("JSON 응답을 해석하지 못했습니다.", { tone: "error" });
       }
@@ -3803,6 +3939,11 @@
       }
 
       return payload;
+    }
+
+    function parseJsonResponseText(rawText) {
+      const safeText = String(rawText || "").replace(/("(?:mgm[^"]*Pk)"\s*:\s*)(-?\d{16,})/g, '$1"$2"');
+      return JSON.parse(safeText);
     }
 
     function requestJsonp(url, params) {
