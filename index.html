@@ -974,7 +974,6 @@
       flex-wrap: wrap;
     }
 
-    .sidebar-close,
     .section-toggle {
       border: 1px solid rgba(36, 27, 16, 0.12);
       border-radius: 999px;
@@ -986,10 +985,6 @@
       cursor: pointer;
       box-shadow: 0 14px 30px rgba(36, 27, 16, 0.12);
       backdrop-filter: blur(10px);
-    }
-
-    .sidebar-close,
-    .section-toggle {
       display: inline-flex;
       flex: 0 0 auto;
       min-width: 72px;
@@ -1000,23 +995,11 @@
       text-align: center;
     }
 
-    .sidebar-close {
-      display: none;
-    }
-
-    .sidebar.is-open .sidebar-close {
-      display: inline-flex;
-    }
-
     .sidebar.is-compact {
       overflow: hidden;
     }
 
     .sidebar.is-compact > section {
-      display: none !important;
-    }
-
-    .sidebar.is-compact .sidebar-close {
       display: none !important;
     }
 
@@ -1245,7 +1228,6 @@
         </div>
         <div class="sidebar-topbar__actions">
           <button id="regionCompactToggle" class="section-toggle" type="button" aria-expanded="true">접기</button>
-          <button id="sidebarClose" class="sidebar-close" type="button" aria-label="사이드바 닫기">닫기</button>
         </div>
       </div>
 
@@ -1344,7 +1326,6 @@
 
     <main class="map-shell">
       <div class="map-header">
-        <div id="zoomHint" class="zoom-hint" data-tone="idle">인허가 색상 원은 데이터를 불러온 뒤 줌 17 이상에서 표시됩니다.</div>
       </div>
 
       <div id="mapSummary" class="map-summary map-summary--hidden" aria-hidden="true">
@@ -1399,10 +1380,10 @@
     const PARCEL_PAGE_SIZE = 700;
     const PERMIT_VISIBLE_MIN_ZOOM = 17;
     const RECENT_PERMIT_LOOKBACK_YEARS = 5;
-    const VIEWPORT_SAMPLE_GRID = 3;
-    const VIEWPORT_PREFETCH_SAMPLE_GRID = 5;
+    const VIEWPORT_SAMPLE_GRID = 5;
+    const VIEWPORT_PREFETCH_SAMPLE_GRID = 7;
     const VIEWPORT_PREFETCH_EXPANSION_RATIO = 0.55;
-    const VIEWPORT_PREFETCH_REGION_LIMIT = 6;
+    const VIEWPORT_PREFETCH_REGION_LIMIT = 8;
     const VIEWPORT_PREFETCH_DELAY = 900;
     const MORAN_STATION = [37.4335, 127.1297];
     const RECENT_PERMIT_REFERENCE_DATE = new Date();
@@ -1466,7 +1447,6 @@
       lastFocusedElement: null,
       loadedRegionKey: "",
       queuedAutoLoad: false,
-      loadToken: 0,
       isSidebarOpen: false,
       isRegionCompact: false,
       lastViewportWasMobile: null,
@@ -1489,13 +1469,12 @@
     const PARCEL_EXACT_FETCH_RETRY_ATTEMPTS = 1;
     const PARCEL_EXACT_FALLBACK_LIMIT = 24;
     const PARCEL_EXACT_FETCH_TIMEOUT_MS = 7000;
-    const REGION_LOOKUP_GRID_DEG = 0.0008;
+    const REGION_LOOKUP_GRID_DEG = 0.0004;
     const MOBILE_LAYOUT_BREAKPOINT = 720;
 
     const elements = {
       sidebar: document.getElementById("sidebar"),
       sidebarBackdrop: document.getElementById("sidebarBackdrop"),
-      sidebarClose: document.getElementById("sidebarClose"),
       regionCard: document.getElementById("regionCard"),
       regionCompactToggle: document.getElementById("regionCompactToggle"),
       regionCompactSummary: document.getElementById("regionCompactSummary"),
@@ -1516,7 +1495,7 @@
       selectedParcelMeta: document.getElementById("selectedParcelMeta"),
       selectedParcelSummary: document.getElementById("selectedParcelSummary"),
       permitList: document.getElementById("permitList"),
-      zoomHint: document.getElementById("zoomHint"),
+
       mapSummary: document.getElementById("mapSummary"),
       mapFallback: document.getElementById("mapFallback"),
       mapLoadOverlay: document.getElementById("mapLoadOverlay"),
@@ -1560,10 +1539,6 @@
       });
       elements.addressRest?.addEventListener("input", () => {
         updateRegionCompactSummary();
-      });
-      elements.sidebarClose?.addEventListener("click", () => {
-        clearSelectedParcelState();
-        closeSidebar();
       });
       elements.regionCompactToggle?.addEventListener("click", handleRegionCompactToggleClick);
       elements.sidebarBackdrop?.addEventListener("click", () => {
@@ -1624,7 +1599,6 @@
         state.map.on("moveend", handleMapMoveEnd);
 
         setMapSummary("건축인허가 지도", `초기 화면은 모란역 중심 줌 ${PERMIT_VISIBLE_MIN_ZOOM}이며, 확대하거나 이동하면 현재 화면에 보이는 필지 기준으로 인허가가 자동 표시됩니다.`);
-        updatePermitVisibilityHint();
       } catch (error) {
         console.error(error);
         showMapFallback("지도를 초기화하지 못했습니다. Leaflet 로딩 상태와 VWorld 배경지도를 확인하세요.");
@@ -2161,13 +2135,13 @@
       const north = bounds.getNorth();
       const points = [];
       const steps = Math.max(2, divisions);
+      const inset = 0.04;
+      const ratioFor = (index) => steps === 1 ? 0.5 : inset + ((1 - 2 * inset) * index / (steps - 1));
 
       for (let row = 0; row < steps; row += 1) {
-        const rowRatio = steps === 1 ? 0.5 : row / (steps - 1);
-        const lat = south + ((north - south) * rowRatio);
+        const lat = south + ((north - south) * ratioFor(row));
         for (let col = 0; col < steps; col += 1) {
-          const colRatio = steps === 1 ? 0.5 : col / (steps - 1);
-          const lng = west + ((east - west) * colRatio);
+          const lng = west + ((east - west) * ratioFor(col));
           points.push([lng, lat]);
         }
       }
@@ -2379,9 +2353,7 @@
       } = options;
 
       if (state.isLoading) {
-        if (trigger !== "manual") {
-          state.queuedAutoLoad = true;
-        }
+        state.queuedAutoLoad = true;
         return;
       }
 
@@ -2417,20 +2389,14 @@
         return;
       }
 
-      const loadToken = state.loadToken + 1;
-      state.loadToken = loadToken;
       let loadCompleted = false;
 
       clearWarnings();
-      clearLoadedData();
 
       try {
         state.isLoading = true;
         state.queuedAutoLoad = false;
         setButtonLoading(true);
-        closeSidebar({ restoreFocus: false });
-        renderSelectedParcel(null, []);
-        renderLegend([]);
         updateStatus("현재 화면에 걸친 법정동의 인허가와 필지를 확인하는 중입니다.", "loading", `${missingRegions.length}개 지역`);
         setMapLoadingProgress("화면 영역 인허가 확인 중", 0);
         setMapSummary("화면 영역 조회 중", `현재 화면에 걸친 ${regions.length}개 법정동 중 ${missingRegions.length}개 지역을 새로 불러옵니다.`);
@@ -2442,20 +2408,17 @@
             regionIndex: index,
             totalRegions: missingRegions.length
           });
-          if (loadToken !== state.loadToken) {
-            return;
-          }
           state.regionCache.set(buildRegionLoadKey(region, loadScope), dataset);
         }
 
-        applyViewportDataFromCache({
-          regions,
-          loadScope,
-          viewportKey,
-          trigger,
-          bounds: viewportBounds
-        });
         if (!state.queuedAutoLoad) {
+          applyViewportDataFromCache({
+            regions,
+            loadScope,
+            viewportKey,
+            trigger,
+            bounds: viewportBounds
+          });
           scheduleViewportPrefetch({
             regions,
             loadScope,
@@ -2465,11 +2428,9 @@
         setMapLoadingProgress("지도에 표시 완료", 100);
         loadCompleted = true;
       } catch (error) {
-        if (loadToken === state.loadToken) {
-          state.loadedRegionKey = "";
-          console.error(error);
-          handleLoadError(error);
-        }
+        state.loadedRegionKey = "";
+        console.error(error);
+        handleLoadError(error);
       } finally {
         state.isLoading = false;
         setButtonLoading(false);
@@ -4127,7 +4088,6 @@
         mappedPermitCount: 0,
         selectedPermitCount: 0
       });
-      updatePermitVisibilityHint();
     }
 
     async function requestWithRetry(task, options = {}) {
@@ -4380,29 +4340,6 @@
       }
 
       state.permitMarkersVisible = canShow;
-      updatePermitVisibilityHint();
-    }
-
-    function updatePermitVisibilityHint() {
-      if (!elements.zoomHint) {
-        return;
-      }
-
-      if (!state.map || !state.permits.length) {
-        elements.zoomHint.dataset.tone = "idle";
-        elements.zoomHint.textContent = `인허가 색상 원은 데이터를 불러온 뒤 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 표시됩니다.`;
-        return;
-      }
-
-      const currentZoom = Math.round(state.map.getZoom());
-      if (state.permitMarkersVisible) {
-        elements.zoomHint.dataset.tone = "visible";
-        elements.zoomHint.textContent = `현재 줌 ${currentZoom} · 인허가 색상 원 표시 중`;
-        return;
-      }
-
-      elements.zoomHint.dataset.tone = "hidden";
-      elements.zoomHint.textContent = `현재 줌 ${currentZoom} · 색상 원은 줌 ${PERMIT_VISIBLE_MIN_ZOOM} 이상에서 표시됩니다.`;
     }
 
     function isMobileViewport() {
@@ -4424,7 +4361,12 @@
     }
 
     function handleRegionCompactToggleClick() {
-      setRegionCompact(!state.isRegionCompact);
+      if (state.isSidebarOpen) {
+        clearSelectedParcelState();
+        closeSidebar();
+      } else {
+        setRegionCompact(!state.isRegionCompact);
+      }
     }
 
     function setRegionCompact(compact, options = {}) {
@@ -4485,7 +4427,7 @@
       document.body.classList.add("sidebar-open");
 
       if (focus) {
-        elements.sidebarClose?.focus({ preventScroll: true });
+        elements.regionCompactToggle?.focus({ preventScroll: true });
       }
     }
 
