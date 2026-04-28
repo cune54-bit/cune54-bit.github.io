@@ -93,6 +93,14 @@
       pointer-events: none;
     }
 
+    .sidebar-topbar__title-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex: 1;
+    }
+
     .sidebar-title {
       margin: 0;
       font-family: "Space Grotesk", "Noto Sans KR", sans-serif;
@@ -100,6 +108,92 @@
       font-weight: 700;
       line-height: 1.04;
       letter-spacing: -0.04em;
+      flex: 1;
+    }
+
+    .layer-selector--compact {
+      display: flex;
+      gap: 6px;
+    }
+
+    .layer-icon-btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid rgba(36, 27, 16, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 252, 246, 0.92);
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .layer-icon-btn:hover {
+      border-color: rgba(36, 27, 16, 0.24);
+      background: rgba(255, 255, 255, 0.98);
+    }
+
+    .layer-icon-btn--active {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, rgba(192, 93, 53, 0.12), rgba(192, 93, 53, 0.06));
+      box-shadow: 0 0 0 2px rgba(192, 93, 53, 0.1);
+    }
+
+    .sidebar-expand {
+      position: sticky;
+      bottom: -16px;
+      z-index: 10;
+      margin: 12px -18px -16px;
+      padding: 8px 0 10px;
+      background: linear-gradient(180deg, rgba(247, 242, 234, 0), rgba(247, 242, 234, 0.7) 42%, rgba(247, 242, 234, 0.96) 100%);
+    }
+
+    .expand-btn {
+      width: 100%;
+      min-width: 0;
+      height: 18px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      font: inherit;
+    }
+
+    .expand-btn:hover .expand-handle,
+    .expand-btn:focus-visible .expand-handle {
+      background: rgba(192, 93, 53, 0.34);
+      box-shadow: 0 0 0 1px rgba(192, 93, 53, 0.08);
+    }
+
+    .expand-btn:focus-visible {
+      outline: none;
+    }
+
+    .expand-handle {
+      display: inline-flex;
+      width: 116px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(63, 49, 33, 0.18);
+      transition: width 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .expand-btn[aria-expanded="false"] .expand-handle {
+      width: 92px;
+      background: rgba(63, 49, 33, 0.24);
+    }
+
+    .sidebar.is-compact .sidebar-expand {
+      bottom: -16px;
+      margin-top: 10px;
+      padding-top: 6px;
+      background: linear-gradient(180deg, rgba(247, 242, 234, 0), rgba(247, 242, 234, 0.84) 100%);
     }
 
     .sidebar-intro {
@@ -730,6 +824,11 @@
       backdrop-filter: blur(8px);
     }
 
+    .map-attribution-note {
+      color: rgba(36, 27, 16, 0.7);
+      font-weight: 500;
+    }
+
     .parcel-modal {
       position: fixed;
       inset: 0;
@@ -1014,10 +1113,25 @@
 
     .sidebar.is-compact {
       overflow: hidden;
+      max-height: 108px;
+      padding-top: 14px;
+      padding-bottom: 12px;
     }
 
     .sidebar.is-compact > section {
       display: none !important;
+    }
+
+    .sidebar.is-compact .sidebar-topbar {
+      margin-bottom: 8px;
+    }
+
+    .sidebar.is-compact .sidebar-topbar__title-group {
+      justify-content: flex-start;
+    }
+
+    .sidebar.is-compact .layer-selector--compact {
+      display: none;
     }
 
     .sidebar .form-card {
@@ -1240,11 +1354,13 @@
   <div class="app-shell">
     <aside id="sidebar" class="sidebar" aria-hidden="false">
       <div class="sidebar-topbar">
-        <div>
+        <div class="sidebar-topbar__title-group">
           <h1 class="sidebar-title">건축인허가 지도</h1>
-        </div>
-        <div class="sidebar-topbar__actions">
-          <button id="regionCompactToggle" class="section-toggle" type="button" aria-expanded="true">접기</button>
+          <div class="layer-selector--compact">
+            <button id="layerBase" class="layer-icon-btn layer-icon-btn--active" type="button" title="기본지도" data-layer="base">🗺️</button>
+            <button id="layerSatellite" class="layer-icon-btn" type="button" title="위성지도" data-layer="satellite">🛰️</button>
+            <button id="layerLanduse" class="layer-icon-btn" type="button" title="토지이용계획도" data-layer="landuse">📋</button>
+          </div>
         </div>
       </div>
 
@@ -1341,6 +1457,12 @@
           </div>
         </div>
       </section>
+
+      <div class="sidebar-expand">
+        <button id="expandToggle" class="expand-btn" type="button" aria-label="사이드바 펼치기" aria-expanded="false">
+          <span class="expand-handle" aria-hidden="true"></span>
+        </button>
+      </div>
     </aside>
     <div id="sidebarBackdrop" class="sidebar-backdrop" hidden></div>
 
@@ -1451,6 +1573,9 @@
       isLoading: false,
       map: null,
       baseLayer: null,
+      satelliteLayer: null,
+      landuseLayer: null,
+      currentLayer: "base",
       pathRenderer: null,
       parcelLayer: null,
       parcelFeatures: [],
@@ -1497,8 +1622,11 @@
       sidebar: document.getElementById("sidebar"),
       sidebarBackdrop: document.getElementById("sidebarBackdrop"),
       regionCard: document.getElementById("regionCard"),
-      regionCompactToggle: document.getElementById("regionCompactToggle"),
+      expandToggle: document.getElementById("expandToggle"),
       regionCompactSummary: document.getElementById("regionCompactSummary"),
+      layerBase: document.getElementById("layerBase"),
+      layerSatellite: document.getElementById("layerSatellite"),
+      layerLanduse: document.getElementById("layerLanduse"),
       form: document.getElementById("loadForm"),
       sido: document.getElementById("sido"),
       sigungu: document.getElementById("sigungu"),
@@ -1535,6 +1663,7 @@
       bindEvents();
       syncResponsiveRegionCard({ force: true });
       updateRegionCompactSummary();
+      updateExpandToggleButton();
       initMap();
       queueAutoLoadForMapViewport({ trigger: "init", delay: 0 });
     });
@@ -1563,7 +1692,16 @@
       elements.addressRest?.addEventListener("input", () => {
         updateRegionCompactSummary();
       });
-      elements.regionCompactToggle?.addEventListener("click", handleRegionCompactToggleClick);
+      elements.layerBase?.addEventListener("click", () => handleLayerChange("base"));
+      elements.layerSatellite?.addEventListener("click", () => handleLayerChange("satellite"));
+      elements.layerLanduse?.addEventListener("click", () => handleLayerChange("landuse"));
+      elements.expandToggle?.addEventListener("click", () => {
+        if (state.isSidebarOpen) {
+          closeSidebar();
+        } else {
+          openSidebar({ focus: false });
+        }
+      });
       elements.sidebarBackdrop?.addEventListener("click", () => {
         closeSidebar();
       });
@@ -1608,6 +1746,7 @@
           preferCanvas: true
         });
         state.map.setView(MORAN_STATION, PERMIT_VISIBLE_MIN_ZOOM);
+        state.map.attributionControl.addAttribution('<span class="map-attribution-note">© zdo.kr 본 사이트의 지도 및 조회 정보는 무단 사용, 복제 및 재배포를 금합니다</span>');
 
         state.baseLayer = L.tileLayer(
           `https://api.vworld.kr/req/wmts/1.0.0/${API_KEY_VWORLD}/Base/{z}/{y}/{x}.png`,
@@ -1618,6 +1757,28 @@
           }
         );
         state.baseLayer.addTo(state.map);
+
+        state.satelliteLayer = L.tileLayer(
+          `https://api.vworld.kr/req/wmts/1.0.0/${API_KEY_VWORLD}/Satellite/{z}/{y}/{x}.jpeg`,
+          {
+            maxZoom: 22,
+            maxNativeZoom: 19,
+            attribution: '© <a href="https://www.vworld.kr" target="_blank" rel="noreferrer">VWorld</a>'
+          }
+        );
+
+        state.landuseLayer = L.tileLayer.wms(
+          "/api/wms-tile",
+          {
+            layers: "lt_c_uq111,lt_c_uq112,lt_c_uq113,lt_c_uq114",
+            styles: "",
+            format: "image/png",
+            transparent: true,
+            version: "1.3.0",
+            maxZoom: 22,
+            attribution: '© <a href="https://www.vworld.kr" target="_blank" rel="noreferrer">VWorld 토지이용계획</a>'
+          }
+        );
         state.map.on("zoomend", handleMapZoomChange);
         state.map.on("moveend", handleMapMoveEnd);
 
@@ -2435,14 +2596,25 @@
         setMapLoadingProgress("화면 영역 인허가 확인 중", 0);
         setMapSummary("화면 영역 조회 중", `현재 화면에 걸친 ${regions.length}개 법정동 중 ${missingRegions.length}개 지역을 새로 불러옵니다.`);
 
-        for (let index = 0; index < missingRegions.length; index += 1) {
-          const region = missingRegions[index];
-          const dataset = await loadRegionDataset(region, {
-            loadScope,
-            regionIndex: index,
-            totalRegions: missingRegions.length
-          });
-          state.regionCache.set(buildRegionLoadKey(region, loadScope), dataset);
+        const BATCH_SIZE = 3;
+        for (let batchStart = 0; batchStart < missingRegions.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, missingRegions.length);
+          const batch = missingRegions.slice(batchStart, batchEnd);
+
+          for (let i = 0; i < batch.length; i += 1) {
+            const region = batch[i];
+            const overallIndex = batchStart + i;
+            const dataset = await loadRegionDataset(region, {
+              loadScope,
+              regionIndex: overallIndex,
+              totalRegions: missingRegions.length
+            });
+            state.regionCache.set(buildRegionLoadKey(region, loadScope), dataset);
+          }
+
+          if (batchEnd < missingRegions.length) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
         }
 
         if (!state.queuedAutoLoad) {
@@ -4279,48 +4451,16 @@
     }
 
     function setMapLoadingProgress(message, percent) {
-      if (!elements.mapLoadOverlay || !elements.mapLoadLabel || !elements.mapLoadValue || !elements.mapLoadFill) {
-        return;
-      }
-
-      if (state.mapLoadHideTimer) {
-        window.clearTimeout(state.mapLoadHideTimer);
-        state.mapLoadHideTimer = 0;
-      }
-
       const normalizedPercent = Math.max(0, Math.min(100, Math.round(percent)));
-      elements.mapLoadOverlay.hidden = false;
-      elements.mapLoadOverlay.classList.add("is-visible");
-      elements.mapLoadLabel.textContent = message;
-      elements.mapLoadValue.textContent = `${String(normalizedPercent).padStart(2, "0")}%`;
-      elements.mapLoadFill.style.width = `${normalizedPercent}%`;
+      if (elements.buttonLabel) {
+        elements.buttonLabel.textContent = `로딩 중 ${String(normalizedPercent).padStart(2, "0")}%`;
+      }
     }
 
     function hideMapLoadingProgress(options = {}) {
-      if (!elements.mapLoadOverlay) {
-        return;
+      if (elements.buttonLabel && !state.isLoading) {
+        elements.buttonLabel.textContent = "주소 검색";
       }
-
-      if (state.mapLoadHideTimer) {
-        window.clearTimeout(state.mapLoadHideTimer);
-        state.mapLoadHideTimer = 0;
-      }
-
-      const delay = Number.isFinite(options.delay) ? Math.max(0, options.delay) : 0;
-      const hide = () => {
-        elements.mapLoadOverlay.classList.remove("is-visible");
-        elements.mapLoadOverlay.hidden = true;
-      };
-
-      if (delay > 0) {
-        state.mapLoadHideTimer = window.setTimeout(() => {
-          state.mapLoadHideTimer = 0;
-          hide();
-        }, delay);
-        return;
-      }
-
-      hide();
     }
 
     function updateStatus(message, tone = "idle", meta = "대기 중") {
@@ -4409,15 +4549,50 @@
       }
     }
 
+    function handleLayerChange(layerType) {
+      if (state.currentLayer === layerType || !state.map) {
+        return;
+      }
+
+      // 토지이용계획도는 WMS 오버레이 — 베이스맵을 유지한 채 오버레이만 토글
+      if (state.currentLayer === "satellite") {
+        state.map.removeLayer(state.satelliteLayer);
+        state.baseLayer.addTo(state.map);
+      }
+      if (state.currentLayer === "landuse") {
+        state.map.removeLayer(state.landuseLayer);
+      }
+
+      if (layerType === "satellite") {
+        state.map.removeLayer(state.baseLayer);
+        state.satelliteLayer.addTo(state.map);
+      } else if (layerType === "landuse") {
+        state.landuseLayer.addTo(state.map);
+      }
+
+      state.currentLayer = layerType;
+      updateLayerButtons();
+    }
+
+    function updateLayerButtons() {
+      const buttons = [
+        { el: elements.layerBase, type: "base" },
+        { el: elements.layerSatellite, type: "satellite" },
+        { el: elements.layerLanduse, type: "landuse" }
+      ];
+
+      buttons.forEach(({ el, type }) => {
+        if (el) {
+          el.classList.toggle("layer-icon-btn--active", state.currentLayer === type);
+        }
+      });
+    }
+
     function setRegionCompact(compact, options = {}) {
       const normalizedCompact = Boolean(compact);
       state.isRegionCompact = normalizedCompact;
       elements.sidebar?.classList.toggle("is-compact", normalizedCompact);
 
-      if (elements.regionCompactToggle) {
-        elements.regionCompactToggle.textContent = normalizedCompact ? "\uD3BC\uCE58\uAE30" : "\uC811\uAE30";
-        elements.regionCompactToggle.setAttribute("aria-expanded", normalizedCompact ? "false" : "true");
-      }
 
       updateRegionCompactSummary();
 
@@ -4443,6 +4618,17 @@
       elements.regionCompactSummary.textContent = summary;
     }
 
+    function updateExpandToggleButton() {
+      if (!elements.expandToggle) {
+        return;
+      }
+
+      const isExpanded = state.isSidebarOpen;
+      const nextLabel = isExpanded ? "\uC811\uAE30" : "\uD3BC\uCE58\uAE30";
+      elements.expandToggle.setAttribute("aria-label", `\uC0AC\uC774\uB4DC\uBC14 ${nextLabel}`);
+      elements.expandToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    }
+
     function handleDocumentKeydown(event) {
       if (event.key === "Escape" && state.isSidebarOpen) {
         closeSidebar();
@@ -4465,9 +4651,10 @@
       elements.sidebar.setAttribute("aria-hidden", "false");
       elements.sidebarBackdrop.hidden = false;
       document.body.classList.add("sidebar-open");
+      updateExpandToggleButton();
 
       if (focus) {
-        elements.regionCompactToggle?.focus({ preventScroll: true });
+        elements.expandToggle?.focus({ preventScroll: true });
       }
     }
 
@@ -4482,6 +4669,7 @@
       elements.sidebar.setAttribute("aria-hidden", "false");
       elements.sidebarBackdrop.hidden = true;
       document.body.classList.remove("sidebar-open");
+      updateExpandToggleButton();
 
       if (restoreFocus && state.lastFocusedElement?.focus) {
         state.lastFocusedElement.focus({ preventScroll: true });
