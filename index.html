@@ -6,8 +6,52 @@
   <title>건축인허가 지도</title>
   <meta
     name="description"
-    content="법정동 단위로 필지와 건축·주택 인허가 정보를 불러오고, 필지 클릭 시 상세 인허가 목록을 확인하는 정적 지도 웹페이지"
+    content="건축 인허가 현황을 지도에서 빠르게 확인하고, 필지별 상세 인허가 정보를 손쉽게 조회할 수 있는 웹페이지입니다."
   >
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <meta name="theme-color" content="#f2ede3">
+  <link rel="canonical" href="https://zdo.kr/">
+  <meta property="og:locale" content="ko_KR">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="건축인허가 지도">
+  <meta property="og:title" content="건축인허가 지도">
+  <meta
+    property="og:description"
+    content="건축 인허가 현황을 지도에서 빠르게 확인하고, 필지별 상세 인허가 정보를 손쉽게 조회할 수 있는 웹페이지입니다."
+  >
+  <meta property="og:url" content="https://zdo.kr/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="건축인허가 지도">
+  <meta
+    name="twitter:description"
+    content="건축 인허가 현황을 지도에서 빠르게 확인하고, 필지별 상세 인허가 정보를 손쉽게 조회할 수 있는 웹페이지입니다."
+  >
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://zdo.kr/#website",
+          "url": "https://zdo.kr/",
+          "name": "건축인허가 지도",
+          "description": "건축 인허가 현황을 지도에서 빠르게 확인하고, 필지별 상세 인허가 정보를 손쉽게 조회할 수 있는 웹페이지입니다.",
+          "inLanguage": "ko-KR"
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://zdo.kr/#webpage",
+          "url": "https://zdo.kr/",
+          "name": "건축인허가 지도",
+          "description": "건축 인허가 현황을 지도에서 빠르게 확인하고, 필지별 상세 인허가 정보를 손쉽게 조회할 수 있는 웹페이지입니다.",
+          "isPartOf": {
+            "@id": "https://zdo.kr/#website"
+          },
+          "inLanguage": "ko-KR"
+        }
+      ]
+    }
+  </script>
   <link rel="icon" href="data:,">
   <link
     rel="stylesheet"
@@ -74,7 +118,7 @@
       z-index: 2;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       min-height: 100vh;
       padding: 20px 18px 18px;
       background: var(--panel);
@@ -146,8 +190,8 @@
       position: sticky;
       bottom: -16px;
       z-index: 10;
-      margin: 0 -18px -16px;
-      padding: 1px 0 6px;
+      margin: -6px -18px -16px;
+      padding: 0 0 4px;
       background: linear-gradient(180deg, rgba(247, 242, 234, 0), rgba(247, 242, 234, 0.7) 42%, rgba(247, 242, 234, 0.96) 100%);
     }
 
@@ -1115,9 +1159,9 @@
       overflow: hidden;
       gap: 0;
       min-height: 0;
-      max-height: 60px;
-      padding-top: 10px;
-      padding-bottom: 2px;
+      max-height: 52px;
+      padding-top: 8px;
+      padding-bottom: 0;
     }
 
     .sidebar.is-compact > section {
@@ -1137,14 +1181,14 @@
     }
 
     .sidebar.is-compact .sidebar-title {
-      font-size: 23px;
+      font-size: 22px;
     }
 
     .sidebar.is-compact .sidebar-expand {
-      margin-top: -1px;
+      margin-top: -4px;
       padding-top: 0;
-      padding-bottom: 2px;
-      bottom: -8px;
+      padding-bottom: 0;
+      bottom: -4px;
       background: linear-gradient(180deg, rgba(247, 242, 234, 0), rgba(247, 242, 234, 0.9) 100%);
     }
 
@@ -1193,7 +1237,7 @@
     }
 
     .sidebar .actions {
-      margin-top: 2px;
+      margin-top: 0;
     }
 
     .sidebar .actions .button {
@@ -1548,12 +1592,16 @@
     const ARCH_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo";
     const ARCH_TMP_BUILDING_ENDPOINT = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApTmpBldInfo";
     const HOUSING_PERMIT_ENDPOINT = "https://apis.data.go.kr/1613000/HsPmsHubService/getHpBasisOulnInfo";
+    const BUILDING_REGISTER_BASIS_ENDPOINT = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrBasisOulnInfo";
+    const BUILDING_REGISTER_RECAP_ENDPOINT = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
+    const BUILDING_REGISTER_TITLE_ENDPOINT = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo";
+    const BUILDING_REGISTER_JIJIGU_ENDPOINT = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo";
     const VWORLD_DATA_ENDPOINT = "https://api.vworld.kr/req/data";
     const VWORLD_ADDRESS_ENDPOINT = "https://api.vworld.kr/req/address";
     const VWORLD_SIDO_LAYER = "LT_C_ADSIDO_INFO";
     const VWORLD_SIGUNGU_LAYER = "LT_C_ADSIGG_INFO";
     const API_KEY_PUBLIC = "262UaaKgpdsminV6qlnLGdOq7KpFfEfTPk9jPZwt422PFHtMoAKfWyF3k3DFQWNUpVmdLpZw4ESve6h7hkw4uA==";
-    const VWORLD_DATA_DOMAIN = "http://cune54-bit.github.io/land-map";
+    const VWORLD_DATA_DOMAIN = "https://zdo.kr";
 
     const SIDO_MAP = {
       "서울": "서울특별시",
@@ -1782,13 +1830,15 @@
         );
 
         state.landuseLayer = L.tileLayer.wms(
-          "/api/wms-tile",
+          "https://api.vworld.kr/req/wms",
           {
             layers: "lt_c_uq111,lt_c_uq112,lt_c_uq113,lt_c_uq114",
             styles: "",
             format: "image/png",
             transparent: true,
             version: "1.3.0",
+            key: API_KEY_VWORLD,
+            domain: VWORLD_DATA_DOMAIN,
             maxZoom: 22,
             attribution: '© <a href="https://www.vworld.kr" target="_blank" rel="noreferrer">VWorld 토지이용계획</a>'
           }
@@ -3838,10 +3888,10 @@
       }
 
       const [basisItems, recapItems, titleItems, jijiguItems] = await Promise.all([
-        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrBasisOulnInfo", requestParams, { pageSize: 50 }),
-        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo", requestParams, { pageSize: 50 }),
-        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo", requestParams, { pageSize: 50 }),
-        fetchAllApiItems("https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo", requestParams, { pageSize: 100 })
+        fetchAllApiItems(BUILDING_REGISTER_BASIS_ENDPOINT, requestParams, { pageSize: 50 }),
+        fetchAllApiItems(BUILDING_REGISTER_RECAP_ENDPOINT, requestParams, { pageSize: 50 }),
+        fetchAllApiItems(BUILDING_REGISTER_TITLE_ENDPOINT, requestParams, { pageSize: 50 }),
+        fetchAllApiItems(BUILDING_REGISTER_JIJIGU_ENDPOINT, requestParams, { pageSize: 100 })
       ]);
 
       return summarizeParcelBuildingRegister({
@@ -4329,11 +4379,28 @@
       throw lastError || new Error("request retry failed");
     }
 
-    async function requestJson(url, params) {
+    async function requestJson(url, params, options = {}) {
       const target = `${url}?${params.toString()}`;
-      const response = await fetch(target, {
-        method: "GET"
-      });
+      const timeoutMs = Math.max(1000, Number(options.timeoutMs || 30000));
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      const timeoutId = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : 0;
+      let response;
+
+      try {
+        response = await fetch(target, {
+          method: "GET",
+          signal: controller?.signal
+        });
+      } catch (error) {
+        if (controller && error?.name === "AbortError") {
+          throw new UserVisibleError("API 요청 시간이 초과되었습니다.", { tone: "error" });
+        }
+        throw error;
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      }
 
       if (!response.ok) {
         throw new UserVisibleError(`API 오류 [${response.status}]`, { tone: "error" });
